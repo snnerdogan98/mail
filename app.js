@@ -148,6 +148,7 @@ const IC = {
   mail: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/>'),
   alert: svg('<path d="M12 3 2.5 20h19z"/><path d="M12 10v4M12 17v.5"/>'),
   trash: svg('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'),
+  block: svg('<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>'),
   archive: svg('<rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v11h14V9M10 13h4"/>'),
   unread: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3.5 6.5 8.5 6.5 8.5-6.5"/><circle cx="19" cy="5" r="3" fill="currentColor" stroke="none"/>'),
   tag: svg('<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>'),
@@ -160,6 +161,7 @@ const IC = {
   caret: svg('<path d="m9 6 6 6-6 6"/>', 'class="caret-ic"'),
   check: svg('<path d="m5 12 5 5L20 7"/>'),
 };
+const dot = color => `<span class="ldot" style="--c:${esc(color || '#8a8a8a')}"></span>`;
 const tagIcon = color => `<svg class="tagic" viewBox="0 0 20 14" width="18" height="13"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11l5 6-5 6h-11A1.5 1.5 0 0 1 1 11.5z" fill="${esc(color || '#8a8a8a')}"/></svg>`;
 
 /* ───────────── Google girişi (OAuth, tarayıcı içi) ───────────── */
@@ -268,7 +270,12 @@ function parseMessage(m) {
     const mt = (part.mimeType || '').toLowerCase();
     const ph = n => (part.headers || []).find(h => h.name.toLowerCase() === n)?.value || '';
     const cs = (ph('content-type').match(/charset="?([^";\s]+)/i) || [])[1];
-    const cid = ph('content-id').replace(/[<>]/g, '');
+    const cid = ph('content-id').replace(/[<>\s]/g, '').toLowerCase();
+    // Gömülü resimler: adı/eki olmasa bile Content-ID taşıyan her resim parçası
+    if (cid && mt.startsWith('image/') && !part.filename && !part.body?.attachmentId) {
+      if (part.body?.data) out.inline.push({ cid, mimeType: mt, data: part.body.data });
+      return;
+    }
     if (part.filename || part.body?.attachmentId) {
       if (cid && mt.startsWith('image/')) out.inline.push({ cid, mimeType: mt, attachmentId: part.body.attachmentId, data: part.body.data });
       if (part.filename && !(cid && /inline/i.test(ph('content-disposition')))) {
@@ -322,6 +329,7 @@ const RealGmail = {
   },
   modifyThread: (id, add = [], remove = []) => call(`threads/${id}/modify`, { method: 'POST', body: { addLabelIds: add, removeLabelIds: remove } }),
   trashThread: id => call(`threads/${id}/trash`, { method: 'POST' }),
+  trashMessages: ids => pmap(ids, 5, id => call(`messages/${id}/trash`, { method: 'POST' })),
   send: (msg, threadId) => call('messages/send', { method: 'POST', body: { raw: buildRaw(msg), ...(threadId ? { threadId } : {}) } }),
   async attachment(messageId, attachmentId) { return (await call(`messages/${messageId}/attachments/${attachmentId}`)).data; },
   async filters() { return (await call('settings/filters')).filter || []; },
@@ -442,11 +450,14 @@ function setView(v, push) {
 function renderSidebar() {
   const el = $('#sidebar');
   if (!el) return;
-  const sysHtml = SYSTEM.map(([id, name, ic]) => {
+  // Az kullanılan klasörler "Daha fazla" altında gizli durur
+  const MORE = ['DRAFT', 'ALL', 'SPAM', 'TRASH'];
+  const showMore = S.collapsed.__more === false || MORE.includes(S.labelId);
+  const sysHtml = SYSTEM.filter(([id]) => showMore || !MORE.includes(id)).map(([id, name, ic]) => {
     const l = S.labelById[id];
     const n = id === 'INBOX' || id === 'SPAM' ? (l?.unread || 0) : (id === 'DRAFT' ? (l?.total || 0) : 0);
     return navItem({ id, html: IC[ic], name, count: n, depth: 0 });
-  }).join('');
+  }).join('') + `<div class="nav-item tool more-toggle" data-action="toggle-more" style="--d:0"><span class="caret-sp"></span><span class="nav-name">${showMore ? 'Daha az' : 'Daha fazla'}</span></div>`;
 
   // Etiket ağacı: "Garanti/Annem Garanti" → Garanti'nin altında.
   // Üst etiketi olmayan "Microsoft/Xbox" gibi isimler olduğu gibi gösterilir.
@@ -459,16 +470,15 @@ function renderSidebar() {
   const renderNode = (pid, depth) => (kids.get(pid) || []).map(l => {
     const hasKids = kids.has(l.id);
     const collapsed = !!S.collapsed[l.id];
-    return navItem({ id: l.id, html: tagIcon(l.color), name: l.short, count: l.unread, depth, caret: hasKids, collapsed, key: l.id })
+    return navItem({ id: l.id, html: dot(l.color), name: l.short, count: l.unread, depth, caret: hasKids, collapsed, key: l.id })
       + (hasKids && !collapsed ? renderNode(l.id, depth + 1) : '');
   }).join('');
 
   el.innerHTML = `
     <div class="side-head">
-      <div class="brand-mark sm">${IC.mail}</div>
-      <div class="acct"><b>Mail</b><span>${esc(S.email)}</span></div>
+      <span class="wordmark">Mail</span>
+      <button class="compose-mini" data-action="compose" title="Yeni posta">${IC.pen}<span>Yeni</span></button>
     </div>
-    <button class="btn primary compose-side" data-action="compose">${IC.pen} Yeni posta</button>
     <nav>
       ${sysHtml}
       <div class="nav-sep">Etiketler</div>
@@ -476,7 +486,8 @@ function renderSidebar() {
       <div class="nav-sep"></div>
       <div class="nav-item tool ${S.view === 'auto' ? 'active' : ''}" data-action="auto" style="--d:0"><span class="caret-sp"></span>${IC.wand}<span class="nav-name">Otomatik etiketleme</span></div>
       <div class="nav-item tool" data-action="logout" style="--d:0"><span class="caret-sp"></span>${IC.logout}<span class="nav-name">Çıkış yap</span></div>
-    </nav>`;
+    </nav>
+    <div class="acct-foot">${esc(S.email)}</div>`;
 }
 const caretBtn = (key, collapsed) => `<span class="caret ${collapsed ? '' : 'open'}" data-action="toggle-node" data-key="${esc(key)}">${IC.caret}</span>`;
 function navItem({ id, html, name, count, depth, caret, collapsed, key }) {
@@ -518,10 +529,9 @@ function renderList(loading) {
   const showTo = S.labelId === 'SENT' || S.labelId === 'DRAFT';
   const items = S.threads.map(t => {
     const chips = t.labelIds.map(id => S.labelById[id]).filter(l => l && l.type === 'user' && l.id !== S.labelId)
-      .map(l => `<span class="chip" style="--c:${esc(l.color || '#8a8a8a')}">${esc(shortName(l))}</span>`).join('');
+      .map(l => `<span class="lchip">${dot(l.color)}${esc(shortName(l))}</span>`).join('');
     const who = showTo ? 'Kime: ' + (t.to || '') : t.from;
     return `<div class="row ${t.unread ? 'unread' : ''} ${S.threadId === t.id ? 'sel' : ''}" data-action="open-thread" data-id="${t.id}">
-      <div class="avatar" style="background:${avatarColor(t.fromEmail)}">${esc((t.from || '?').trim()[0]?.toUpperCase() || '?')}</div>
       <div class="row-main">
         <div class="row-top"><span class="who">${esc(who)}${t.count > 1 ? ` <i>${t.count}</i>` : ''}</span><span class="date">${fmtDate(t.date)}</span></div>
         <div class="subj">${t.starred ? '<span class="st">★</span>' : ''}${esc(t.subject || '(konu yok)')}</div>
@@ -536,7 +546,7 @@ function renderList(loading) {
   else if (S.next) tail = '<button class="btn more" data-action="more">Daha fazla yükle</button>';
   el.innerHTML = items + tail;
 }
-const skeleton = () => Array.from({ length: 7 }, () => '<div class="row skel"><div class="avatar"></div><div class="row-main"><div class="bar1"></div><div class="bar2"></div><div class="bar3"></div></div></div>').join('');
+const skeleton = () => Array.from({ length: 7 }, () => '<div class="row skel"><div class="row-main"><div class="bar1"></div><div class="bar2"></div><div class="bar3"></div></div></div>').join('');
 
 /* Okuma ekranı */
 
@@ -571,7 +581,8 @@ function readerButtons() {
     <button class="icon-btn" data-action="trash" title="Sil">${IC.trash}</button>
     <button class="icon-btn" data-action="mark-unread" title="Okunmadı yap">${IC.unread}</button>
     <button class="icon-btn ${starred ? 'on' : ''}" data-action="star" title="Yıldızla">${starred ? IC.starFill : IC.star}</button>
-    <button class="icon-btn" data-action="labels" title="Etiketler">${IC.tag}</button>`;
+    <button class="icon-btn" data-action="labels" title="Etiketler">${IC.tag}</button>
+    <button class="icon-btn" data-action="block" title="Göndericiyi engelle">${IC.block}</button>`;
 }
 
 function renderThread() {
@@ -580,7 +591,7 @@ function renderThread() {
   const prevScroll = r.querySelector('.reader-scroll')?.scrollTop || 0;
   const msgs = t.messages;
   const chips = t.labelIds.map(id => S.labelById[id]).filter(l => l && l.type === 'user')
-    .map(l => `<span class="chip" style="--c:${esc(l.color || '#8a8a8a')}">${esc(l.name.replace('/', ' › '))}</span>`).join('');
+    .map(l => `<span class="lchip">${dot(l.color)}${esc(l.name.replace('/', ' › '))}</span>`).join('');
   r.innerHTML = `
     <div class="reader-bar">${readerButtons()}</div>
     <div class="reader-scroll">
@@ -590,7 +601,6 @@ function renderThread() {
         const open = S.openMsgs.has(m.id);
         return `<article class="msg ${open ? 'open' : ''}" data-mid="${m.id}">
           <header class="msg-head" data-action="toggle-msg">
-            <div class="avatar" style="background:${avatarColor(m.fromEmail)}">${esc((m.from || '?')[0].toUpperCase())}</div>
             <div class="msg-who">
               <div><b>${esc(m.from)}</b> <span class="addr">&lt;${esc(m.fromEmail)}&gt;</span></div>
               <div class="msg-sub">${open ? 'Kime: ' + esc(m.to) + (m.cc ? ' · Cc: ' + esc(m.cc) : '') : esc(m.snippet)}</div>
@@ -613,6 +623,31 @@ function renderThread() {
   r.querySelector('.reader-scroll').scrollTop = prevScroll;
 }
 
+// Resimlerin yüklenmesini engelleyen durumları düzeltir
+function prepareHtml(html) {
+  const d = new DOMParser().parseFromString(html, 'text/html');
+  d.querySelectorAll('img').forEach(img => {
+    img.removeAttribute('loading');                    // tembel yükleme çerçeve içinde hiç tetiklenmeyebiliyor
+    const src = (img.getAttribute('src') || '').trim();
+    if (/^cid:/i.test(src)) {
+      img.setAttribute('data-cid', decodeURIComponent(src.slice(4)).replace(/[<>\s]/g, '').toLowerCase());
+      img.setAttribute('src', 'data:image/gif;base64,R0lGODlhAQABAAAAACw=');
+    } else if (/^http:\/\//i.test(src)) {
+      img.setAttribute('data-orig', src);
+      img.setAttribute('src', 'https://' + src.slice(7));  // güvenli sayfada http resimler engellenir
+    }
+    const ss = img.getAttribute('srcset');
+    if (ss) img.setAttribute('srcset', ss.replace(/http:\/\//gi, 'https://'));
+  });
+  d.querySelectorAll('[background]').forEach(el => {
+    el.setAttribute('background', el.getAttribute('background').replace(/^http:\/\//i, 'https://'));
+  });
+  return d.body.innerHTML.replace(/url\((['"]?)http:\/\//gi, 'url($1https://');
+}
+
+// https ile açılmayan eski sunuculardaki resimler için yedek yol
+const imgProxy = url => 'https://images.weserv.nl/?url=' + encodeURIComponent(url.replace(/^https?:\/\//i, ''));
+
 function renderBody(container, m) {
   if (!m.html) {
     container.innerHTML = `<div class="plain">${linkify(m.text || m.snippet || '')}</div>`;
@@ -623,24 +658,49 @@ function renderBody(container, m) {
   f.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
   f.className = 'mailframe';
   f.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank">
+    <meta name="referrer" content="no-referrer">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <style>html{overflow-x:auto}body{margin:0;padding:16px;font:15px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;color:#1d1d1f;background:#fff;overflow-wrap:anywhere}
-    img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${m.html}</body></html>`;
+    img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${prepareHtml(m.html)}</body></html>`;
   container.appendChild(f);
   const fit = () => { try { f.style.height = f.contentDocument.documentElement.scrollHeight + 'px'; } catch {} };
-  f.addEventListener('load', () => {
+
+  let wired = false;
+  const wire = () => {
+    let doc;
+    try { doc = f.contentDocument; } catch { return; }
+    if (wired || !doc || !doc.body || doc.URL !== 'about:srcdoc') return;
+    wired = true;
     fit();
-    try {
-      new ResizeObserver(fit).observe(f.contentDocument.body);
-      f.contentDocument.querySelectorAll('img').forEach(img => img.addEventListener('load', fit));
-      // Mailin içine gömülü (cid:) resimleri yükle
-      f.contentDocument.querySelectorAll('img[src^="cid:"]').forEach(async img => {
-        const cid = img.getAttribute('src').slice(4);
-        const part = m.inline.find(p => p.cid === cid);
-        if (!part) return;
+    try { new ResizeObserver(fit).observe(doc.body); } catch {}
+    doc.querySelectorAll('img').forEach(img => {
+      img.addEventListener('load', fit);
+      img.addEventListener('error', () => retryImg(img));
+    });
+    // Gömülü (cid:) resimleri hemen yükle; diğer resimlerin bitmesini bekleme
+    doc.querySelectorAll('img[data-cid]').forEach(async img => {
+      const cid = img.getAttribute('data-cid');
+      const part = m.inline.find(p => p.cid === cid) || m.inline.find(p => p.cid.split('@')[0] === cid.split('@')[0]);
+      if (!part) return;
+      try {
         const data = part.data || await Gmail.attachment(m.id, part.attachmentId);
         img.src = `data:${part.mimeType};base64,` + data.replace(/-/g, '+').replace(/_/g, '/');
-      });
+      } catch {}
+    });
+  };
+  const retryImg = img => {
+    const orig = img.getAttribute('data-orig') || img.currentSrc || img.getAttribute('src') || '';
+    if (img.dataset.retried || !/^https?:/i.test(orig) || orig.includes('images.weserv.nl')) return;
+    img.dataset.retried = '1';
+    img.removeAttribute('srcset');
+    img.src = imgProxy(orig);
+  };
+  // srcdoc'un "load" olayı tüm resimler inene kadar gecikir; çerçeveyi erken bağla
+  const poll = setInterval(() => { wire(); if (wired) clearInterval(poll); }, 30);
+  f.addEventListener('load', () => {
+    clearInterval(poll); wire(); fit();
+    try {   // olay kaçmışsa: yüklenemeyen resimleri yakala
+      f.contentDocument.querySelectorAll('img').forEach(img => { if (img.complete && !img.naturalWidth) retryImg(img); });
     } catch {}
   });
 }
@@ -802,16 +862,79 @@ async function offerRule(thread, labelId) {
   const covers = (f, k) => (f.criteria?.from || '').toLowerCase().includes(k);
   if (S.filters.some(f => covers(f, sender.fromEmail) || covers(f, key))) { toast('Etiket eklendi'); return; }
   const label = S.labelById[labelId];
-  toast(`Bundan sonra <b>${esc(key)}</b> adresinden gelenler otomatik olarak <b>${esc(shortName(label))}</b> etiketini alsın mı?`, [
+  toast(`Bundan sonra <b>${esc(key)}</b> adresinden gelenler doğrudan <b>${esc(shortName(label))}</b> etiketine gitsin mi?`, [
     ['Evet', async () => {
       try {
-        const f = await Gmail.createFilter({ from: key }, { addLabelIds: [labelId] });
+        const f = await Gmail.createFilter({ from: key }, { addLabelIds: [labelId], removeLabelIds: ['INBOX'] });
         S.filters.push(f);
-        toast('Kural oluşturuldu');
+        const ids = await Gmail.messageIdsByQuery(`in:inbox from:(${key})`, 500);
+        if (ids.length) await Gmail.batchModify(ids, [labelId], ['INBOX']);
+        if (S.labelId === 'INBOX') { S.threads = S.threads.filter(t => !(t.fromEmail === key || t.fromEmail.endsWith('@' + key) || t.fromEmail.endsWith('.' + key))); renderList(); }
+        refreshCountsSoon();
+        toast(`Kural oluşturuldu${ids.length ? ` · ${ids.length} mail etiketine taşındı` : ''}`);
       } catch (e) { toast('Kural oluşturulamadı: ' + e.message); }
     }],
     ['Hayır', () => {}]
   ], 12000);
+}
+
+/* ───────────── Göndericiyi engelle ───────────── */
+
+
+function openBlockDialog() {
+  const t = S.thread;
+  const m = [...t.messages].reverse().find(x => x.fromEmail !== S.email) || t.messages[t.messages.length - 1];
+  const email = m.fromEmail;
+  const dom = baseDomain(email.split('@')[1] || '');
+  const canDomain = !GENERIC_DOMAINS.has(dom);
+  $('#modal').innerHTML = `
+  <div class="modal-bg">
+    <div class="sheet picker block-sheet">
+      <header class="sheet-head">
+        <button type="button" class="icon-btn" data-action="close-modal">${IC.close}</button>
+        <h3>Göndericiyi engelle</h3>
+      </header>
+      <div class="block-body">
+        <p>Bundan sonra gelen mailler gelen kutuna uğramadan <b>doğrudan çöp kutusuna</b> gidecek. Çöp kutusundakiler 30 gün sonra Gmail tarafından silinir.</p>
+        <label class="radio"><input type="radio" name="bkey" value="${esc(email)}" checked><span><b>Sadece bu adres</b><small>${esc(email)}</small></span></label>
+        ${canDomain ? `<label class="radio"><input type="radio" name="bkey" value="${esc(dom)}"><span><b>Bu alan adından gelen her şey</b><small>${esc(dom)} (tüm adresleri)</small></span></label>` : ''}
+        <label class="check"><input type="checkbox" id="blockOld" checked> Eski maillerini de çöp kutusuna taşı</label>
+      </div>
+      <div class="block-actions">
+        <button class="btn" data-action="close-modal">Vazgeç</button>
+        <button class="btn danger" data-action="apply-block">${IC.block} Engelle</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function applyBlock() {
+  const key = document.querySelector('input[name=bkey]:checked')?.value;
+  const old = $('#blockOld')?.checked;
+  const id = S.threadId;
+  if (!key) return;
+  const btn = document.querySelector('[data-action=apply-block]');
+  btn.disabled = true; btn.textContent = 'Engelleniyor…';
+  try {
+    const f = await Gmail.createFilter({ from: key }, { addLabelIds: ['TRASH'], removeLabelIds: ['INBOX'] });
+    if (S.filters) S.filters.push(f);
+    let moved = 0;
+    if (old) {
+      const ids = await Gmail.messageIdsByQuery(`from:(${key})`, 500);
+      await Gmail.trashMessages(ids);
+      moved = ids.length;
+    }
+    await Gmail.trashThread(id).catch(() => {});
+    closeModal();
+    removeFromList(id);
+    if (old) S.threads = S.threads.filter(t => !(t.fromEmail === key || t.fromEmail.endsWith('@' + key) || t.fromEmail.endsWith('.' + key)));
+    ACTIONS.back();
+    refreshCountsSoon();
+    toast(`${key} engellendi${moved ? ` · ${moved} eski mail çöpe taşındı` : ''}`);
+  } catch (e) {
+    closeModal();
+    if (!(e instanceof AuthError)) toast('Engellenemedi: ' + e.message);
+  }
 }
 
 /* ───────────── Otomatik etiketleme ───────────── */
@@ -842,20 +965,29 @@ function describeFilter(f) {
 
 function renderAutoIntro() {
   const mine = (S.filters || []).filter(f => (f.action?.addLabelIds || []).some(id => S.labelById[id]?.type === 'user'));
+  const blocked = (S.filters || []).filter(f => (f.action?.addLabelIds || []).includes('TRASH'));
+  const notSkipping = mine.filter(f => !(f.action?.removeLabelIds || []).includes('INBOX')).length;
   $('#autoBody').innerHTML = `
     <div class="card hero">
       <h3>Etiketlerinden öğren</h3>
       <p>Her etiketin altındaki son mailler taranır, göndericiler incelenir ve senin için Gmail filtresi önerilir. Onayladığın kurallar Gmail'in içinde çalışır; uygulama kapalıyken bile yeni mailler otomatik etiketlenir.</p>
       <button class="btn primary" data-action="scan">${IC.wand} Taramayı başlat</button>
     </div>
-    <h4 class="sec">Mevcut kurallar (${mine.length})</h4>
+    <div class="sec-row"><h4 class="sec">Mevcut kurallar (${mine.length})</h4>
+      ${notSkipping ? `<button class="btn" data-action="redirect-all">Tümü doğrudan etiketine gitsin (${notSkipping})</button>` : ''}</div>
     ${mine.length ? mine.map(f => {
       const d = describeFilter(f);
       return `<div class="rule">
-        <div class="rule-main">${d.labels.map(l => `<span class="chip" style="--c:${esc(l.color || '#8a8a8a')}">${esc(shortName(l))}</span>`).join('')}
-          <span class="rule-cond">${esc(d.cond)}</span>${d.skip ? '<span class="tag-skip">Gelen kutusunu atlar</span>' : ''}</div>
+        <div class="rule-main">${d.labels.map(l => `<span class="lchip">${dot(l.color)}${esc(shortName(l))}</span>`).join('')}
+          <span class="rule-cond">${esc(d.cond)}</span>${d.skip ? '<span class="tag-skip">Doğrudan etiketine gider</span>' : '<span class="tag-muted">Gelen kutusunda da görünür</span>'}</div>
+        ${d.skip ? '' : `<button class="btn sm" data-action="redirect-filter" data-id="${f.id}">Etiketine yönlendir</button>`}
         <button class="icon-btn" data-action="del-filter" data-id="${f.id}" title="Kuralı sil">${IC.trash}</button></div>`;
-    }).join('') : '<p class="muted">Henüz otomatik kural yok.</p>'}`;
+    }).join('') : '<p class="muted">Henüz otomatik kural yok.</p>'}
+    <h4 class="sec">Engellenen göndericiler (${blocked.length})</h4>
+    ${blocked.length ? blocked.map(f => `<div class="rule">
+        <div class="rule-main">${IC.block}<span class="rule-cond">${esc(f.criteria?.from || describeFilter(f).cond)}</span><span class="tag-skip">Doğrudan çöpe gider</span></div>
+        <button class="btn" data-action="del-filter" data-id="${f.id}">Engeli kaldır</button></div>`).join('')
+      : '<p class="muted">Engellenen gönderici yok. Bir maili açıp üstteki ⊘ düğmesiyle engelleyebilirsin.</p>'}`;
 }
 
 async function runScan() {
@@ -908,7 +1040,7 @@ function analyze(labels, data) {
       }
     }
   }
-  suggestions.forEach((s, i) => { s.i = i; s.on = s.count >= 2 || s.count / s.total >= 0.3; s.skip = false; });
+  suggestions.forEach((s, i) => { s.i = i; s.on = s.count >= 2 || s.count / s.total >= 0.3; s.skip = true; });
   return { suggestions, conflicts: [...conflicts.entries()].map(([key, m], i) => ({ i, key, labels: [...m.entries()].map(([labelId, count]) => ({ labelId, count, phrase: '' })) })) };
 }
 
@@ -920,15 +1052,15 @@ function renderSuggestions() {
   $('#autoBody').innerHTML = `
     <div class="card">
       <h3>${suggestions.length} kural önerisi</h3>
-      <p>İşaretli olanlar oluşturulacak. <b>Gelen kutusunu atla</b> seçersen o mailler doğrudan etiketine gider, gelen kutusunda görünmez.</p>
-      <label class="check"><input type="checkbox" id="retro" checked> Eski mailleri de bu kurallara göre etiketle</label>
+      <p>İşaretli olanlar oluşturulacak. Yeni mailler gelen kutusuna uğramadan <b>doğrudan etiketine gider</b>; okunmamış sayısını sol menüde etiketin yanında görürsün. Gelen kutusunda da görmek istediklerinin <b>"Gelen kutusunda da göster"</b> kutusunu işaretle.</p>
+      <label class="check"><input type="checkbox" id="retro" checked> Eski mailleri de etiketle ve gelen kutusundan etiketine taşı</label>
     </div>
     ${groups.map(([lid, list]) => {
       const l = S.labelById[lid];
       return `<div class="sug-group"><div class="sug-label">${tagIcon(l.color)} ${esc(l.name.replace('/', ' › '))}</div>
         ${list.map(s => `<div class="sug">
           <label class="check grow"><input type="checkbox" data-sug="${s.i}" ${s.on ? 'checked' : ''}><span><b>${esc(s.key)}</b><small>${s.count} mail</small></span></label>
-          <label class="toggle"><input type="checkbox" data-skip="${s.i}"><span>Gelen kutusunu atla</span></label>
+          <label class="toggle"><input type="checkbox" data-keep="${s.i}"><span>Gelen kutusunda da göster</span></label>
         </div>`).join('')}</div>`;
     }).join('')}
     ${conflicts.length ? `<h4 class="sec">Ayırt edemediklerim (${conflicts.length})</h4>
@@ -949,7 +1081,7 @@ async function applyRules() {
   document.querySelectorAll('[data-sug]').forEach(cb => {
     if (!cb.checked) return;
     const s = suggestions[+cb.dataset.sug];
-    const skip = document.querySelector(`[data-skip="${s.i}"]`)?.checked;
+    const skip = !document.querySelector(`[data-keep="${s.i}"]`)?.checked;
     jobs.push({ labelId: s.labelId, criteria: { from: s.key }, skip, q: `from:(${s.key})` });
   });
   document.querySelectorAll('[data-conf]').forEach(inp => {
@@ -958,7 +1090,7 @@ async function applyRules() {
     const c = conflicts[+inp.dataset.conf];
     const x = c.labels[+inp.dataset.j];
     const qp = /\s/.test(phrase) ? `"${phrase.replace(/"/g, '')}"` : phrase;
-    jobs.push({ labelId: x.labelId, criteria: { from: c.key, query: qp }, skip: false, q: `from:(${c.key}) ${qp}` });
+    jobs.push({ labelId: x.labelId, criteria: { from: c.key, query: qp }, skip: true, q: `from:(${c.key}) ${qp}` });
   });
   if (!jobs.length) { toast('Hiç kural seçilmedi'); return; }
   const body = $('#autoBody');
@@ -972,7 +1104,7 @@ async function applyRules() {
       S.filters.push(f);
       if (retro) {
         const ids = await Gmail.messageIdsByQuery(j.q, 1000);
-        if (ids.length) { await Gmail.batchModify(ids, [j.labelId], []); tagged += ids.length; }
+        if (ids.length) { await Gmail.batchModify(ids, [j.labelId], j.skip ? ['INBOX'] : []); tagged += ids.length; }
       }
     } catch (e) {
       if (e instanceof AuthError) return;
@@ -980,8 +1112,48 @@ async function applyRules() {
     }
     done++; progress();
   }
-  toast(`${jobs.length - failed} kural oluşturuldu${retro ? `, ${tagged} eski mail etiketlendi` : ''}${failed ? ` · ${failed} başarısız` : ''}`);
+  toast(`${jobs.length - failed} kural oluşturuldu${retro && tagged ? ` · ${tagged} eski mail etiketine taşındı` : ''}${failed ? ` · ${failed} başarısız` : ''}`);
   refreshCountsSoon();
+  loadList();
+  renderAutoIntro();
+}
+
+// Var olan kuralı "gelen kutusunu atla" olacak şekilde yeniler ve gelen kutusundaki eşleşen mailleri etiketine taşır
+function filterQuery(c) {
+  const q = [];
+  if (c.from) q.push(`from:(${c.from})`);
+  if (c.to) q.push(`to:(${c.to})`);
+  if (c.subject) q.push(`subject:(${c.subject})`);
+  if (c.query) q.push(c.query);
+  return q.join(' ');
+}
+async function redirectFilter(f) {
+  const action = { ...f.action, removeLabelIds: [...new Set([...(f.action?.removeLabelIds || []), 'INBOX'])] };
+  const nf = await Gmail.createFilter(f.criteria, action);
+  await Gmail.deleteFilter(f.id).catch(() => {});
+  S.filters = S.filters.filter(x => x.id !== f.id).concat(nf);
+  let moved = 0;
+  const q = filterQuery(f.criteria || {});
+  if (q) {
+    const ids = await Gmail.messageIdsByQuery('in:inbox ' + q, 1000);
+    if (ids.length) { await Gmail.batchModify(ids, action.addLabelIds || [], ['INBOX']); moved = ids.length; }
+  }
+  return moved;
+}
+async function redirectMany(list) {
+  const body = $('#autoBody');
+  let done = 0, moved = 0, failed = 0;
+  const progress = () => body.innerHTML = `<div class="card"><h3>Kurallar güncelleniyor…</h3><p>${done} / ${list.length}</p>
+    <div class="progress"><div style="width:${done / list.length * 100}%"></div></div></div>`;
+  progress();
+  for (const f of list) {
+    try { moved += await redirectFilter(f); }
+    catch (e) { if (e instanceof AuthError) return; failed++; }
+    done++; progress();
+  }
+  toast(`${list.length - failed} kural güncellendi${moved ? ` · ${moved} mail gelen kutusundan etiketine taşındı` : ''}${failed ? ` · ${failed} başarısız` : ''}`);
+  refreshCountsSoon();
+  loadList();
   renderAutoIntro();
 }
 
@@ -1010,6 +1182,7 @@ const ACTIONS = {
     if (S.view === 'auto') closeReader();
     renderSidebar(); loadList();
   },
+  'toggle-more': () => { S.collapsed.__more = S.collapsed.__more === false; store.set('collapsed', S.collapsed); renderSidebar(); },
   'toggle-node': (el, e) => {
     e.stopPropagation();
     const k = el.dataset.key;
@@ -1051,6 +1224,8 @@ const ACTIONS = {
     } catch (e) { if (!(e instanceof AuthError)) toast(e.message); }
   },
   labels: () => { if (S.thread) openLabelPicker(); },
+  block: () => { if (S.thread) openBlockDialog(); },
+  'apply-block': applyBlock,
   'apply-labels': applyLabels,
   'close-modal': closeModal,
   compose: () => { $('#shell').classList.remove('drawer'); openCompose(); },
@@ -1072,6 +1247,8 @@ const ACTIONS = {
   },
   auto: () => { $('#shell').classList.remove('drawer'); openAuto(); },
   scan: runScan,
+  'redirect-filter': el => { const f = S.filters.find(x => x.id === el.dataset.id); if (f) redirectMany([f]); },
+  'redirect-all': () => redirectMany(S.filters.filter(f => (f.action?.addLabelIds || []).some(id => S.labelById[id]?.type === 'user') && !(f.action?.removeLabelIds || []).includes('INBOX'))),
   'apply-rules': applyRules,
   'del-filter': async el => {
     if (!confirm('Bu kural silinsin mi? Etiketlenmiş mailler etkilenmez.')) return;

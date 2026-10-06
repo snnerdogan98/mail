@@ -102,6 +102,7 @@
       t.labelIds = [...new Set([...t.labelIds, ...add])].filter(x => !remove.includes(x));
       return wait({});
     },
+    trashMessages: ids => { ids.forEach(id => { const t = threads.find(x => x.id === id); if (t) t.labelIds = ['TRASH']; }); return wait({}); },
     trashThread: id => { const t = threads.find(x => x.id === id); t.labelIds = ['TRASH']; return wait({}); },
     send: () => wait({ id: 'sent' }, 600),
     attachment: () => wait(btoa('demo')),
@@ -109,7 +110,7 @@
     createFilter: (criteria, action) => { const f = { id: 'f' + Math.random().toString(36).slice(2, 7), criteria, action }; filters.push(f); return wait(f); },
     deleteFilter: id => { filters = filters.filter(f => f.id !== id); return wait({}); },
     labelSenders: id => wait(threads.filter(t => t.labelIds.includes(id) || t.msg.label === id).map(t => addr(t.msg.from).email.toLowerCase()), 150),
-    messageIdsByQuery: q => wait(threads.filter(t => match(t, q)).map(t => t.id)),
-    batchModify: (ids, add = []) => { ids.forEach(id => { const t = threads.find(x => x.id === id); if (t) t.labelIds = [...new Set([...t.labelIds, ...add])]; }); return wait({}); }
+    messageIdsByQuery: q => wait(threads.filter(t => match(t, q) && (!/in:inbox/.test(q) || t.labelIds.includes('INBOX'))).map(t => t.id)),
+    batchModify: (ids, add = [], remove = []) => { ids.forEach(id => { const t = threads.find(x => x.id === id); if (t) t.labelIds = [...new Set([...t.labelIds, ...add])].filter(x => !remove.includes(x)); }); return wait({}); }
   };
 })();
