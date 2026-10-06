@@ -17,6 +17,12 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+            - name: Google masaüstü kimliği
+        shell: bash
+        env:
+          CID: ${{ secrets.DESKTOP_CLIENT_ID }}
+          CSEC: ${{ secrets.DESKTOP_CLIENT_SECRET }}
+        run: node -e "require('fs').writeFileSync('auth-config.json', JSON.stringify({clientId:process.env.CID, clientSecret:process.env.CSEC}))"
       - run: npm run dist
       - uses: actions/upload-artifact@v4
         with:
