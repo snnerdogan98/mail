@@ -17,7 +17,7 @@
   let seq = 0;
   const T = (label, from, subject, text, ago, opts = {}) => ({
     id: 't' + (++seq), label, from, subject, text, date: now - ago, unread: !!opts.unread,
-    starred: !!opts.starred, inbox: opts.inbox !== false, html: opts.html
+    starred: !!opts.starred, inbox: opts.inbox !== false, html: opts.html, ics: !!opts.ics
   });
   const raw = [
     T('L20', 'Trendyol <kampanya@trendyol.com>', 'Siparişin kargoya verildi 📦', 'Merhaba, 4 Ekim tarihli siparişin kargoya verildi. Takip numarası: 7281 0034 9921.', 1.2 * H, { unread: true, html: '<div style="font-family:Arial;max-width:560px;margin:auto"><div style="background:#f27a1a;color:#fff;padding:18px 20px;font-size:20px;font-weight:bold">trendyol</div><div style="padding:20px"><h2 style="margin-top:0">Siparişin yolda!</h2><p>Merhaba, 4 Ekim tarihli siparişin kargoya verildi.</p><table style="width:100%;border-collapse:collapse;margin:16px 0"><tr><td style="padding:8px;border-bottom:1px solid #eee">Kargo firması</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right"><b>Trendyol Express</b></td></tr><tr><td style="padding:8px">Takip no</td><td style="padding:8px;text-align:right"><b>7281 0034 9921</b></td></tr></table><a href="https://example.com" style="display:inline-block;background:#f27a1a;color:#fff;padding:12px 22px;border-radius:6px;text-decoration:none">Kargomu takip et</a></div></div>' }),
@@ -48,6 +48,9 @@
     T('L13', 'Ben <snn.erdogan98@gmail.com>', 'Not: kira artışı', 'Kira artışı Ocak\'ta %TÜFE oranında olacak, sözleşmeyi kontrol et.', 13 * D, { inbox: false }),
     T(null, 'LinkedIn <messages-noreply@linkedin.com>', 'Bu hafta profilini 12 kişi görüntüledi', 'Profilini görüntüleyenleri gör.', 4 * H, { unread: true })
   ];
+  raw.push(T('L13', 'Ben <snn.erdogan98@gmail.com>', 'Alışveriş listesi', 'Süt, yumurta, kahve, deterjan, pil (AA)', 2 * D, { inbox: false }));
+  raw.push(T('L13', 'Ben <snn.erdogan98@gmail.com>', 'Tatil fikirleri', 'Kaş, Kalkan, Bozcaada. Haziran başı uygun. Otel yerine ev kiralamayı düşün.', 6 * D, { inbox: false }));
+  raw.push(T(null, 'Ali Veli <ali.veli@ornekfirma.com>', 'Davet: Proje toplantısı', 'Proje toplantısına davetlisiniz. Gündem: yeni sürüm planı.', 5 * H, { unread: true, ics: true }));
   // Taramada çakışma göstermek için: Garanti ve Annem Garanti aynı adresten
   raw.push(T('L8', 'Garanti BBVA <bilgilendirme@garantibbva.com.tr>', 'Eylül ekstreniz – Ayşe Erdoğan', 'Sayın Ayşe Erdoğan, Eylül dönemi ekstreniz hazırlanmıştır.', 30 * D, { inbox: false }));
   raw.push(T('L7', 'Garanti BBVA <bilgilendirme@garantibbva.com.tr>', 'Bonus puan kazandınız', 'Sayın Sinan Erdoğan, 120 bonus kazandınız.', 20 * D, { inbox: false }));
@@ -80,6 +83,38 @@
     return (t.msg.subject + ' ' + t.msg.text + ' ' + t.msg.from).toLowerCase().includes(q);
   }
 
+
+  /* Takvim demosu */
+  const pad = n => String(n).padStart(2, '0');
+  const at = (dayOff, h, mi = 0) => { const d = new Date(); d.setDate(d.getDate() + dayOff); d.setHours(h, mi, 0, 0); return d; };
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:00`;
+  const dateOnly = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  let evSeq = 0;
+  const E = (summary, s, e, extra = {}) => ({ id: 'e' + (++evSeq), summary, start: { dateTime: iso(s) }, end: { dateTime: iso(e) }, htmlLink: 'https://calendar.google.com', ...extra });
+  const A = (summary, dayOff, days = 1, extra = {}) => ({ id: 'e' + (++evSeq), summary, start: { date: dateOnly(at(dayOff, 0)) }, end: { date: dateOnly(at(dayOff + days, 0)) }, ...extra });
+  const meetStart = at(6, 14), meetEnd = at(6, 15);
+  window.__meet = [meetStart, meetEnd];
+  let events = [
+    E('Diş hekimi', at(1, 10), at(1, 11), { location: 'Kadıköy', colorId: '7' }),
+    E('Spor salonu', at(0, 19), at(0, 20, 30), { colorId: '2' }),
+    E('Spor salonu', at(2, 19), at(2, 20, 30), { colorId: '2' }),
+    E('Annemle akşam yemeği', at(3, 20), at(3, 22), { colorId: '4' }),
+    E('Proje toplantısı', meetStart, meetEnd, { location: 'Zoom', iCalUID: 'demo-davet@ornekfirma.com', attendees: [{ email: me, self: true, responseStatus: 'needsAction' }, { email: 'ali.veli@ornekfirma.com', organizer: true }] }),
+    E('Oyun gecesi', at(4, 21), at(4, 23, 30), { colorId: '3' }),
+    E('Kahve – Mehmet', at(-2, 11), at(-2, 12)),
+    A('Tatil izni başvurusu', 9),
+    A('Bozcaada', 18, 3, { colorId: '5' }),
+  ];
+  window.icsFor = () => { const f = d => d.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, ''); return `BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:demo-davet@ornekfirma.com\r\nDTSTART:${f(meetStart)}\r\nDTEND:${f(meetEnd)}\r\nSUMMARY:Proje toplantısı\r\nLOCATION:Zoom\r\nORGANIZER;CN=Ali Veli:mailto:ali.veli@ornekfirma.com\r\nEND:VEVENT\r\nEND:VCALENDAR`; };
+  const rangeOf = ev => ev.start.date ? [new Date(ev.start.date + 'T00:00'), new Date(ev.end.date + 'T00:00')] : [new Date(ev.start.dateTime), new Date(ev.end.dateTime)];
+  window.MockCal = {
+    list: (a, b) => wait(events.filter(ev => { const [s, e] = rangeOf(ev); return s < b && e > a; }).map(x => JSON.parse(JSON.stringify(x))), 200),
+    insert: ev => { const x = { ...JSON.parse(JSON.stringify(ev)), id: 'e' + (++evSeq) }; events.push(x); return wait(x); },
+    patch: (id, p) => { const ev = events.find(x => x.id === id); Object.assign(ev, JSON.parse(JSON.stringify(p))); return wait(ev); },
+    remove: id => { events = events.filter(x => x.id !== id); return wait({}); },
+    byUid: uid => wait(events.filter(x => x.iCalUID === uid).map(x => JSON.parse(JSON.stringify(x))))
+  };
+
   window.MockGmail = {
     profile: () => wait({ email: me }),
     labels: () => wait(counts()),
@@ -93,7 +128,8 @@
       return wait({ id, labelIds: [...t.labelIds], messages: [{
         id: id + 'm', labelIds: [...t.labelIds], from: f.name, fromEmail: f.email, to: 'Sinan Erdoğan <' + me + '>', cc: '', replyTo: '',
         subject: t.msg.subject, date: t.msg.date, messageId: '<' + id + '@demo>', references: '', snippet: t.msg.text,
-        html: t.msg.html || '', text: t.msg.text, inline: [],
+        ics: t.msg.ics ? icsFor() : '', icsAtt: null,
+        html: t.msg.html || '', text: t.msg.text, inline: [], noteUuid: t.msg.uuid || '', noteCreated: t.msg.created || '',
         attachments: /ekstre|fatura|özet/i.test(t.msg.subject) ? [{ filename: 'ekstre_ekim_2026.pdf', mimeType: 'application/pdf', size: 184320, data: btoa('demo') }] : []
       }] });
     },
@@ -102,7 +138,19 @@
       t.labelIds = [...new Set([...t.labelIds, ...add])].filter(x => !remove.includes(x));
       return wait({});
     },
-    trashMessages: ids => { ids.forEach(id => { const t = threads.find(x => x.id === id); if (t) t.labelIds = ['TRASH']; }); return wait({}); },
+    trashMessages: ids => { ids.forEach(id => { const t = threads.find(x => x.id === id || x.id + 'm' === id); if (t) t.labelIds = ['TRASH']; }); return wait({}); },
+    createLabel: name => { const l = { id: 'L' + (labels.length + 1), name, type: 'user', color: null }; labels.push(l); return wait(l); },
+    insertNote: (raw, labelIds) => {
+      const b = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return new TextDecoder().decode(Uint8Array.from(atob(s), c => c.charCodeAt(0))); };
+      const txt = b(raw); const [head, body] = txt.split('\r\n\r\n');
+      const h = n => (head.match(new RegExp('^' + n + ': (.*)$', 'mi')) || [])[1] || '';
+      let subj = h('Subject'); const ew = subj.match(/^=\?UTF-8\?B\?(.*)\?=$/); if (ew) subj = new TextDecoder().decode(Uint8Array.from(atob(ew[1]), c => c.charCodeAt(0)));
+      const html = new TextDecoder().decode(Uint8Array.from(atob(body.replace(/\r\n/g, '')), c => c.charCodeAt(0))).replace(/^.*<body>|<\/body>.*$/gs, '');
+      const id = 't' + (++seq);
+      const tmp = document.createElement('div'); tmp.innerHTML = html;
+      threads.push({ id, labelIds: [...labelIds], msg: { id, label: labelIds[0], from: 'Ben <' + me + '>', subject: subj, text: tmp.innerText, html, date: Date.now(), uuid: h('X-Universally-Unique-Identifier'), created: h('X-Mail-Created-Date') } });
+      return wait({ id: id + 'm', threadId: id });
+    },
     trashThread: id => { const t = threads.find(x => x.id === id); t.labelIds = ['TRASH']; return wait({}); },
     send: () => wait({ id: 'sent' }, 600),
     attachment: () => wait(btoa('demo')),

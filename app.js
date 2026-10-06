@@ -4,11 +4,13 @@
  */
 'use strict';
 
+const APP_VERSION = 'V0.1';
 const CLIENT_ID = (window.MAIL_CONFIG && window.MAIL_CONFIG.CLIENT_ID || '').trim();
 const DEMO = new URLSearchParams(location.search).has('demo');
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',          // okuma, etiketleme, gönderme
-  'https://www.googleapis.com/auth/gmail.settings.basic'   // filtre oluşturma
+  'https://www.googleapis.com/auth/gmail.settings.basic',  // filtre oluşturma
+  'https://www.googleapis.com/auth/calendar.events'        // takvim etkinlikleri
 ].join(' ');
 const API = 'https://gmail.googleapis.com/gmail/v1/users/me/';
 
@@ -154,6 +156,14 @@ const IC = {
   tag: svg('<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8.5" r="1.3"/>'),
   reply: svg('<path d="M10 8 4 13l6 5"/><path d="M4 13h10a6 6 0 0 1 6 6"/>'),
   forward: svg('<path d="m14 8 6 5-6 5"/><path d="M20 13H10a6 6 0 0 0-6 6"/>'),
+  note: svg('<path d="M6 3h9l4 4v14H6z"/><path d="M9.5 11h6M9.5 14.5h6M9.5 18h3.5"/>'),
+  cal: svg('<rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>'),
+  chevL: svg('<path d="m14.5 6-6 6 6 6"/>'),
+  chevR: svg('<path d="m9.5 6 6 6-6 6"/>'),
+  plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  pin: svg('<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>'),
+  clock: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+  spark: svg('<path d="M12 3.5l1.8 4.9 4.9 1.8-4.9 1.8L12 16.9l-1.8-4.9-4.9-1.8 4.9-1.8z"/><path d="M18.5 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/>'),
   pen: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   wand: svg('<path d="m4 20 11-11M14 4v3M19 9h-3M17.5 5.5 16 7M9 3.5v1.5M20 14v1.5M5.5 7H7"/>'),
   logout: svg('<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/>'),
@@ -205,7 +215,7 @@ const Auth = {
     if (h.get('state') !== store.get('oauthState')) return 'state';
     store.del('oauthState');
     if (h.get('access_token')) {
-      store.set('auth', { token: h.get('access_token'), exp: Date.now() + (+h.get('expires_in') || 3600) * 1000 });
+      store.set('auth', { token: h.get('access_token'), exp: Date.now() + (+h.get('expires_in') || 3600) * 1000, scope: h.get('scope') || '' });
       store.del('silentAt');
       return 'ok';
     }
@@ -234,6 +244,7 @@ class AuthError extends Error {}
    Her istek türünün bir maliyeti var; istekleri bu sınırın altında kalacak şekilde sıraya koyuyoruz. */
 const QUOTA = { perMinute: 11000, perSecond: 220 };
 function costOf(path, method) {
+  if (path.startsWith('https://')) return 0;      // takvim isteği: Gmail kotasına sayılmaz
   if (path === 'messages/send') return 100;
   if (path.endsWith('batchModify')) return 50;
   if (/^threads\/[^/]+$/.test(path) && method === 'GET') return 10;
@@ -260,7 +271,7 @@ const Quota = {
 const isRateLimit = (status, msg) => status === 429 || (status === 403 && /rate|quota|limit/i.test(msg));
 
 async function call(path, { method = 'GET', body, query } = {}) {
-  const url = new URL(API + path);
+  const url = new URL(path.startsWith('https://') ? path : API + path);
   if (query) for (const [k, v] of Object.entries(query)) {
     if (Array.isArray(v)) v.forEach(x => url.searchParams.append(k, x));
     else if (v != null && v !== '') url.searchParams.set(k, v);
@@ -315,11 +326,15 @@ function summarizeThread(t) {
 }
 
 function parseMessage(m) {
-  const out = { html: '', text: '', attachments: [], inline: [] };
+  const out = { html: '', text: '', attachments: [], inline: [], ics: '', icsAtt: null };
   const walk = part => {
     const mt = (part.mimeType || '').toLowerCase();
     const ph = n => (part.headers || []).find(h => h.name.toLowerCase() === n)?.value || '';
     const cs = (ph('content-type').match(/charset="?([^";\s]+)/i) || [])[1];
+    if (mt === 'text/calendar' || /\.ics$/i.test(part.filename || '')) {
+      if (part.body?.data && !out.ics) out.ics = decodeText(part.body.data, cs);
+      else if (part.body?.attachmentId && !out.icsAtt) out.icsAtt = part.body.attachmentId;
+    }
     const cid = ph('content-id').replace(/[<>\s]/g, '').toLowerCase();
     // Gömülü resimler: adı/eki olmasa bile Content-ID taşıyan her resim parçası
     if (cid && mt.startsWith('image/') && !part.filename && !part.body?.attachmentId) {
@@ -344,7 +359,9 @@ function parseMessage(m) {
     to: hdr(m, 'To'), cc: hdr(m, 'Cc'), replyTo: hdr(m, 'Reply-To'),
     subject: hdr(m, 'Subject'), date: +m.internalDate || 0,
     messageId: hdr(m, 'Message-ID') || hdr(m, 'Message-Id'), references: hdr(m, 'References'),
-    snippet: decodeEntities(m.snippet || ''), ...out
+    snippet: decodeEntities(m.snippet || ''),
+    noteUuid: hdr(m, 'X-Universally-Unique-Identifier'), noteCreated: hdr(m, 'X-Mail-Created-Date'),
+    ...out
   };
 }
 
@@ -379,6 +396,8 @@ const RealGmail = {
   },
   modifyThread: (id, add = [], remove = []) => call(`threads/${id}/modify`, { method: 'POST', body: { addLabelIds: add, removeLabelIds: remove } }),
   trashThread: id => call(`threads/${id}/trash`, { method: 'POST' }),
+  insertNote: (raw, labelIds) => call('messages', { method: 'POST', query: { internalDateSource: 'dateHeader' }, body: { raw, labelIds } }),
+  createLabel: name => call('labels', { method: 'POST', body: { name, labelListVisibility: 'labelShow', messageListVisibility: 'show' } }),
   trashMessages: ids => pmap(ids, 5, id => call(`messages/${id}/trash`, { method: 'POST' })),
   send: (msg, threadId) => call('messages/send', { method: 'POST', body: { raw: buildRaw(msg), ...(threadId ? { threadId } : {}) } }),
   async attachment(messageId, attachmentId) { return (await call(`messages/${messageId}/attachments/${attachmentId}`)).data; },
@@ -441,6 +460,14 @@ function setLabels(labels) {
   S.labels = labels;
   S.labelById = Object.fromEntries(labels.map(l => [l.id, l]));
 }
+// Gmail'deki "Notes" etiketi (iPhone/Mac Notlar uygulamasının Gmail'e kaydettiği notlar)
+const notesLabel = () => S.labels.find(l => l.type === 'user' && !l.parentId && /^(notes|notlar)$/i.test(l.name));
+const inNotes = () => !!S.labelId && notesLabel()?.id === S.labelId;
+function noteTitle(t) {
+  const s = (t.subject || '').trim();
+  if (s) return s;
+  return (t.snippet || '').split(/[.\n]/)[0].slice(0, 60) || 'Başlıksız not';
+}
 const userLabels = () => S.labels.filter(l => l.type === 'user').sort((a, b) => a.name.localeCompare(b.name, 'tr'));
 const shortName = l => l.short || l.name;
 
@@ -476,6 +503,7 @@ function showShell() {
       <header class="bar">
         <button class="icon-btn only-mobile" data-action="open-drawer" aria-label="Menü">${IC.menu}</button>
         <h1 id="listTitle">Gelen Kutusu</h1>
+        <button class="btn sm new-note-btn" id="newNoteBtn" data-action="new-note" hidden>${IC.pen} Yeni not</button>
         <button class="icon-btn" data-action="refresh" aria-label="Yenile">${IC.refresh}</button>
       </header>
       <form class="searchbox" id="searchForm">
@@ -486,6 +514,7 @@ function showShell() {
       <button class="fab" data-action="compose" aria-label="Yeni posta">${IC.pen}<span>Yeni</span></button>
     </section>
     <section class="reader" id="reader"><div class="empty-reader">${IC.mail}<p>Okumak için bir posta seç</p></div></section>
+    <section class="calpane" id="calpane"></section>
   </div>`;
   $('#searchForm').addEventListener('submit', e => {
     e.preventDefault();
@@ -498,7 +527,7 @@ function showShell() {
 
 function setView(v, push) {
   S.view = v;
-  $('#shell')?.setAttribute('data-view', v === 'list' ? 'list' : 'thread');
+  $('#shell')?.setAttribute('data-view', v === 'list' ? 'list' : v === 'cal' ? 'cal' : 'thread');
   if (push) history.pushState({ v }, '');
 }
 
@@ -510,20 +539,28 @@ function renderSidebar() {
   // Az kullanılan klasörler "Daha fazla" altında gizli durur
   const MORE = ['DRAFT', 'ALL', 'SPAM', 'TRASH'];
   const showMore = S.collapsed.__more === false || MORE.includes(S.labelId);
+  const notes = notesLabel();
   const sysHtml = SYSTEM.filter(([id]) => showMore || !MORE.includes(id)).map(([id, name, ic]) => {
     const l = S.labelById[id];
     const n = id === 'INBOX' || id === 'SPAM' ? (l?.unread || 0) : (id === 'DRAFT' ? (l?.total || 0) : 0);
-    return navItem({ id, html: IC[ic], name, count: n, depth: 0 });
+    const item = navItem({ id, html: IC[ic], name, count: n, depth: 0 });
+    // Notlar etiketi, etiketlerden ayrı olarak Gönderilmiş'in altında durur
+    if (id !== 'SENT') return item;
+    return item + (notes ? navItem({ id: notes.id, html: IC.note, name: 'Notlar', count: notes.unread, depth: 0 }) : '')
+      + `<div class="nav-item ${S.view === 'cal' ? 'active' : ''}" data-action="open-cal" style="--d:0"><span class="caret-sp"></span>${IC.cal}<span class="nav-name">Takvim</span></div>`;
   }).join('') + `<div class="nav-item tool more-toggle" data-action="toggle-more" style="--d:0"><span class="caret-sp"></span><span class="nav-name">${showMore ? 'Daha az' : 'Daha fazla'}</span></div>`;
 
   // Etiket ağacı: "Garanti/Annem Garanti" → Garanti'nin altında.
   // Üst etiketi olmayan "Microsoft/Xbox" gibi isimler olduğu gibi gösterilir.
   const kids = new Map();
   for (const l of userLabels()) {
+    if (notes && l.id === notes.id) continue;
     const key = l.parentId || '';
     if (!kids.has(key)) kids.set(key, []);
     kids.get(key).push(l);
   }
+  const labelsHidden = !!S.collapsed.__labels;
+  const hiddenUnread = labelsHidden ? userLabels().filter(l => !notes || l.id !== notes.id).reduce((n, l) => n + (l.unread || 0), 0) : 0;
   const renderNode = (pid, depth) => (kids.get(pid) || []).map(l => {
     const hasKids = kids.has(l.id);
     const collapsed = !!S.collapsed[l.id];
@@ -538,17 +575,18 @@ function renderSidebar() {
     </div>
     <nav>
       ${sysHtml}
-      <div class="nav-sep">Etiketler</div>
-      ${renderNode('', 0) || '<div class="nav-empty">Etiket yok</div>'}
+      <div class="nav-sep sep-toggle ${labelsHidden ? 'closed' : ''}" data-action="toggle-labels" title="${labelsHidden ? 'Etiketleri göster' : 'Etiketleri gizle'}">
+        <span>Etiketler</span>${labelsHidden && hiddenUnread ? `<span class="count">${hiddenUnread}</span>` : ''}${IC.caret}</div>
+      ${labelsHidden ? '' : (renderNode('', 0) || '<div class="nav-empty">Etiket yok</div>')}
       <div class="nav-sep"></div>
       <div class="nav-item tool ${S.view === 'auto' ? 'active' : ''}" data-action="auto" style="--d:0"><span class="caret-sp"></span>${IC.wand}<span class="nav-name">Otomatik etiketleme</span></div>
-      <div class="nav-item tool" data-action="logout" style="--d:0"><span class="caret-sp"></span>${IC.logout}<span class="nav-name">Çıkış yap</span></div>
+      <div class="nav-item tool" data-action="logout" style="--d:0" title="${esc(S.email)} hesabından çıkış yap"><span class="caret-sp"></span>${IC.logout}<span class="nav-name">Çıkış yap</span></div>
     </nav>
-    <div class="acct-foot">${esc(S.email)}</div>`;
+    <div class="acct-foot"><span class="ver">${APP_VERSION}</span><button class="ver-btn" data-action="changelog" title="Güncelleme notları">${IC.spark}</button></div>`;
 }
 const caretBtn = (key, collapsed) => `<span class="caret ${collapsed ? '' : 'open'}" data-action="toggle-node" data-key="${esc(key)}">${IC.caret}</span>`;
 function navItem({ id, html, name, count, depth, caret, collapsed, key }) {
-  const active = S.view !== 'auto' && !S.q && S.labelId === id;
+  const active = S.view !== 'auto' && S.view !== 'cal' && !S.q && S.labelId === id;
   return `<div class="nav-item ${active ? 'active' : ''} ${count ? 'has-unread' : ''}" data-action="open-label" data-id="${esc(id)}" style="--d:${depth}">
     ${caret ? caretBtn(key, collapsed) : '<span class="caret-sp"></span>'}${html}
     <span class="nav-name">${esc(name)}</span>${count ? `<span class="count">${count}</span>` : ''}</div>`;
@@ -561,18 +599,20 @@ function listTitle() {
   const sys = SYSTEM.find(s => s[0] === S.labelId);
   if (sys) return sys[1];
   const l = S.labelById[S.labelId];
+  if (l && l === notesLabel()) return 'Notlar';
   return l ? shortName(l) : 'Posta';
 }
 
 async function loadList(more) {
   if (S.loading) return;
+  if (!more && S.note) flushNote();
   S.loading = true;
   if (!more) { S.threads = []; S.next = null; }
   $('#listTitle').textContent = listTitle();
   $('#searchForm').classList.toggle('has-q', !!S.q);
   renderList(true);
   try {
-    const r = await Gmail.listThreads({ labelId: S.q ? null : S.labelId, q: S.q, pageToken: more ? S.next : null });
+    const r = await Gmail.listThreads({ labelId: S.q && !inNotes() ? null : S.labelId, q: S.q, pageToken: more ? S.next : null });
     S.threads = S.threads.concat(r.threads);
     S.next = r.next;
   } catch (e) { if (!(e instanceof AuthError)) toast('Postalar yüklenemedi: ' + e.message); }
@@ -584,7 +624,15 @@ function renderList(loading) {
   const el = $('#list');
   if (!el) return;
   const showTo = S.labelId === 'SENT' || S.labelId === 'DRAFT';
-  const items = S.threads.map(t => {
+  const notesMode = inNotes();
+  $('#list').classList.toggle('notes-list', notesMode);
+  const sb = $('#search'); if (sb) sb.placeholder = notesMode ? 'Notlarda ara' : 'Postalarda ara';
+  const nb = $('#newNoteBtn'); if (nb) nb.hidden = !notesMode;
+  const items = notesMode ? S.threads.map(t => `
+    <div class="note-card ${S.threadId === t.id ? 'sel' : ''}" data-action="open-thread" data-id="${t.id}">
+      <div class="note-title">${esc(noteTitle(t))}</div>
+      <div class="note-meta"><span>${fmtDate(t.date)}</span><span class="note-prev">${esc(t.snippet.replace(noteTitle(t), '').trim())}</span></div>
+    </div>`).join('') : S.threads.map(t => {
     const chips = t.labelIds.map(id => S.labelById[id]).filter(l => l && l.type === 'user' && l.id !== S.labelId)
       .map(l => tagChip(l, l.name)).join('');
     const who = showTo ? 'Kime: ' + (t.to || '') : t.from;
@@ -599,7 +647,7 @@ function renderList(loading) {
   let tail = '';
   if (loading && !S.threads.length) tail = skeleton();
   else if (loading) tail = '<div class="list-msg">Yükleniyor…</div>';
-  else if (!S.threads.length) tail = `<div class="list-msg">${S.q ? 'Sonuç bulunamadı' : 'Burada posta yok'}</div>`;
+  else if (!S.threads.length) tail = `<div class="list-msg">${S.q ? 'Sonuç bulunamadı' : (notesMode ? 'Henüz not yok' : 'Burada posta yok')}</div>`;
   else if (S.next) tail = '<button class="btn more" data-action="more">Daha fazla yükle</button>';
   el.innerHTML = items + tail;
 }
@@ -608,6 +656,7 @@ const skeleton = () => Array.from({ length: 7 }, () => '<div class="row skel"><d
 /* Okuma ekranı */
 
 async function openThread(id) {
+  if (S.note && S.note.threadId !== id) flushNote();
   S.threadId = id;
   if (S.view !== 'thread') setView('thread', matchMedia('(max-width: 800px)').matches);
   else setView('thread');
@@ -642,8 +691,141 @@ function readerButtons() {
     <div class="spacer"></div>`;
 }
 
+/* ───────────── Notlar: yazma ve düzenleme ─────────────
+   Notlar, iPhone/Mac Notlar uygulamasının Gmail'de kullandığı biçimde saklanır
+   (Notes etiketi + X-Uniform-Type-Identifier: com.apple.mail-note). Gmail'de bir mesaj
+   yerinde değiştirilemediği için kaydetmek = yeni sürümü ekle, eskisini çöpe taşı. */
+
+function sanitizeNoteHtml(html) {
+  const d = new DOMParser().parseFromString(html || '', 'text/html');
+  d.querySelectorAll('script,style,iframe,object,embed,link,meta,form,input,button,title,head').forEach(n => n.remove());
+  d.body.querySelectorAll('*').forEach(el => {
+    for (const at of [...el.attributes]) {
+      const n = at.name.toLowerCase();
+      if (n.startsWith('on') || n === 'class' || n === 'id' || (n === 'style' && /expression|url\(/i.test(at.value))) el.removeAttribute(at.name);
+      if ((n === 'href' || n === 'src') && /^\s*javascript:/i.test(at.value)) el.removeAttribute(at.name);
+    }
+  });
+  return d.body.innerHTML.trim();
+}
+const textToHtml = t => esc(t || '').split(/\r?\n/).map(l => `<div>${l || '<br>'}</div>`).join('');
+
+function noteDraft(m) {
+  return {
+    msgId: m?.id || null, threadId: S.thread?.id || null,
+    uuid: m?.noteUuid || (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2)).toUpperCase(),
+    created: m?.noteCreated || new Date().toUTCString().replace('GMT', '+0000'),
+    title: m ? (m.subject || '') : '',
+    html: m ? sanitizeNoteHtml(m.html || textToHtml(m.text || m.snippet)) : '',
+    date: m?.date || Date.now(), dirty: false, saving: false, timer: null
+  };
+}
+
+function renderNote(newNote) {
+  const t = S.thread, m = newNote ? null : t.messages[t.messages.length - 1];
+  if (!S.note || newNote || S.note.msgId !== m?.id) S.note = noteDraft(m);
+  const n = S.note;
+  const r = $('#reader');
+  r.innerHTML = `
+    <div class="reader-bar note-bar">
+      <button class="icon-btn back" data-action="back" aria-label="Geri">${IC.back}</button>
+      <span class="note-date">${newNote ? 'Yeni not' : fmtDate(n.date, true)}</span>
+      <span class="note-status" id="noteStatus"></span>
+      <div class="spacer"></div>
+      <button class="icon-btn" data-action="trash" title="Notu sil">${IC.trash}</button>
+    </div>
+    <div class="reader-scroll note-view">
+      <input class="note-h" id="noteTitle" placeholder="Başlık" value="${esc(n.title)}" autocomplete="off">
+      <div class="note-body" id="noteBody" contenteditable="true" data-ph="Yazmaya başla…">${n.html}</div>
+    </div>`;
+  const ti = $('#noteTitle'), bo = $('#noteBody');
+  const changed = () => {
+    n.title = ti.value; n.html = bo.innerHTML; n.dirty = true;
+    noteStatus('Düzenleniyor');
+    clearTimeout(n.timer);
+    n.timer = setTimeout(() => saveNote(n), 6000);   // yazmayı bırakınca birkaç saniye sonra kaydet
+  };
+  ti.addEventListener('input', changed);
+  bo.addEventListener('input', changed);
+  ti.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); bo.focus(); } });
+  // Başlıkla metin arasında geçerken kaydetme; notun dışına çıkınca kaydet
+  const leave = e => { if (e.relatedTarget !== ti && e.relatedTarget !== bo && !bo.contains(e.relatedTarget)) saveNote(n); };
+  bo.addEventListener('blur', leave);
+  ti.addEventListener('blur', leave);
+  if (newNote) ti.focus();
+}
+function noteStatus(s) { const el = $('#noteStatus'); if (el) el.textContent = s; }
+
+function buildNoteRaw(n) {
+  const encWord = s => /^[\x20-\x7e]*$/.test(s) ? s : '=?UTF-8?B?' + bytesToB64(utf8(s)) + '?=';
+  const title = n.title.trim() || htmlToText(n.html).split('\n')[0].slice(0, 80) || 'Yeni not';
+  const html = `<html><head></head><body>${n.html}</body></html>`;
+  const lines = [
+    `From: ${S.email}`, `Subject: ${encWord(title)}`, `Date: ${new Date().toUTCString().replace('GMT', '+0000')}`,
+    'X-Uniform-Type-Identifier: com.apple.mail-note', `X-Mail-Created-Date: ${n.created}`,
+    `X-Universally-Unique-Identifier: ${n.uuid}`, `Message-Id: <${n.uuid}.${Date.now()}@mail.app>`,
+    'MIME-Version: 1.0', 'Content-Type: text/html; charset=utf-8', 'Content-Transfer-Encoding: base64'
+  ];
+  return { raw: toB64url(lines.join('\r\n') + '\r\n\r\n' + bytesToB64(utf8(html)).replace(/.{76}/g, '$&\r\n')), title };
+}
+
+async function notesLabelId() {
+  let l = notesLabel();
+  if (l) return l.id;
+  const made = await Gmail.createLabel('Notes');
+  setLabels(await Gmail.labels()); renderSidebar();
+  return made.id;
+}
+
+async function saveNote(n = S.note) {
+  if (!n || !n.dirty || n.saving) return;
+  clearTimeout(n.timer);
+  const empty = !n.title.trim() && !htmlToText(n.html).trim();
+  if (empty && !n.msgId) { n.dirty = false; return; }       // boş yeni notu kaydetme
+  n.saving = true; n.dirty = false;
+  noteStatus('Kaydediliyor…');
+  try {
+    const lid = await notesLabelId();
+    const { raw, title } = buildNoteRaw(n);
+    const res = await Gmail.insertNote(raw, [lid]);
+    const old = n.msgId, oldThread = n.threadId;
+    n.msgId = res.id; n.threadId = res.threadId; n.date = Date.now();
+    if (old) await Gmail.trashMessages([old]).catch(() => {});
+    // listeyi yerinde güncelle
+    S.threads = S.threads.filter(t => t.id !== oldThread && t.id !== res.threadId);
+    if (inNotes()) S.threads.unshift({ id: res.threadId, subject: title, snippet: htmlToText(n.html).replace(/\s+/g, ' ').slice(0, 140),
+      date: n.date, labelIds: [lid], from: '', fromEmail: S.email, count: 1, unread: false, starred: false });
+    if (S.note === n) { S.threadId = res.threadId; if (S.thread) S.thread.id = res.threadId; }
+    renderList();
+    if (S.note === n) noteStatus(n.dirty ? 'Düzenleniyor' : 'Kaydedildi');
+  } catch (e) {
+    n.dirty = true;
+    if (!(e instanceof AuthError)) { noteStatus('Kaydedilemedi'); toast('Not kaydedilemedi: ' + e.message); }
+  }
+  n.saving = false;
+  if (n.dirty) { clearTimeout(n.timer); n.timer = setTimeout(() => saveNote(n), 1500); }
+}
+// Nottan ayrılırken bekleyen değişikliği kaydet
+async function flushNote() {
+  const n = S.note;
+  if (!n) return;
+  S.note = null;                 // ekrandan hemen ayır; kaydetme arka planda bitsin
+  clearTimeout(n.timer);
+  if (n.dirty) await saveNote(n);
+}
+
+function newNote() {
+  flushNote();
+  S.thread = { id: null, messages: [], labelIds: [] };
+  S.threadId = null;
+  if (S.view !== 'thread') setView('thread', matchMedia('(max-width: 800px)').matches); else setView('thread');
+  renderList();
+  renderNote(true);
+}
+
 function renderThread() {
   const t = S.thread;
+  if (inNotes()) return renderNote();
   const r = $('#reader');
   const prevScroll = r.querySelector('.reader-scroll')?.scrollTop || 0;
   const msgs = t.messages;
@@ -654,6 +836,7 @@ function renderThread() {
     <div class="reader-scroll">
       <h2 class="t-subj">${esc(msgs[0]?.subject || '(konu yok)')}</h2>
       ${chips ? `<div class="chips t-chips">${chips}</div>` : ''}
+      <div id="calExtras"></div>
       ${msgs.map((m, i) => {
         const open = S.openMsgs.has(m.id);
         return `<article class="msg ${open ? 'open' : ''}" data-mid="${m.id}">
@@ -678,6 +861,8 @@ function renderThread() {
     if (body) renderBody(body, m);
   });
   r.querySelector('.reader-scroll').scrollTop = prevScroll;
+  S.foundDates = null;
+  if (typeof renderMailCalExtras === 'function') renderMailCalExtras();
 }
 
 // Resimlerin yüklenmesini engelleyen durumları düzeltir
@@ -794,8 +979,9 @@ function refreshCountsSoon() {
 }
 
 function closeReader() {
+  if (S.note) flushNote();
   S.threadId = null; S.thread = null;
-  $('#reader').innerHTML = `<div class="empty-reader">${IC.mail}<p>Okumak için bir posta seç</p></div>`;
+  $('#reader').innerHTML = inNotes() ? `<div class="empty-reader">${IC.note}<p>Okumak için bir not seç</p></div>` : `<div class="empty-reader">${IC.mail}<p>Okumak için bir posta seç</p></div>`;
   setView('list');
   renderList(); renderSidebar();
 }
@@ -999,6 +1185,7 @@ async function applyBlock() {
 const SCAN_PER_LABEL = 30;
 
 async function openAuto() {
+  if (S.note) flushNote();
   S.threadId = null;
   setView('auto', matchMedia('(max-width: 800px)').matches);
   $('#shell').setAttribute('data-view', 'thread');
@@ -1237,10 +1424,13 @@ const ACTIONS = {
     $('#shell').classList.remove('drawer');
     S.labelId = el.dataset.id; S.q = ''; $('#search').value = '';
     if (S.view === 'auto') closeReader();
+    if (S.view === 'cal') { setView('list'); renderSidebar(); }
     renderSidebar(); loadList();
   },
+  'toggle-labels': () => { S.collapsed.__labels = !S.collapsed.__labels; store.set('collapsed', S.collapsed); renderSidebar(); },
   'toggle-more': () => { S.collapsed.__more = S.collapsed.__more === false; store.set('collapsed', S.collapsed); renderSidebar(); },
   'color-label': (el, e) => { e.stopPropagation(); openColorPicker(el.dataset.id, el.closest('.nav-item')); },
+  'new-note': () => newNote(),
   'toggle-node': (el, e) => {
     e.stopPropagation();
     const k = el.dataset.key;
@@ -1264,6 +1454,8 @@ const ACTIONS = {
     catch (e) { if (!(e instanceof AuthError)) toast('Arşivlenemedi: ' + e.message); }
   },
   trash: async () => {
+    if (S.note && !S.note.msgId) { S.note = null; closeReader(); toast('Not silindi'); return; }
+    if (S.note) { clearTimeout(S.note.timer); S.note.dirty = false; S.note = null; }
     const id = S.threadId;
     try { await Gmail.trashThread(id); removeFromList(id); ACTIONS.back(); toast('Çöp kutusuna taşındı'); refreshCountsSoon(); }
     catch (e) { if (!(e instanceof AuthError)) toast('Silinemedi: ' + e.message); }
@@ -1460,6 +1652,8 @@ document.addEventListener('click', e => {
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').innerHTML) closeModal(); });
 $('#modal').addEventListener('click', e => { if (e.target.classList.contains('modal-bg')) closeModal(); });
 window.addEventListener('popstate', () => { if (S.view !== 'list') closeReader(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && S.note?.dirty) saveNote(); });
+window.addEventListener('beforeunload', e => { if (S.note?.dirty) { saveNote(); e.preventDefault(); e.returnValue = ''; } });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && $('#shell') && !S.loading && S.view === 'list') { loadList(); refreshCountsSoon(); }
 });
@@ -1474,13 +1668,14 @@ async function start() {
     store.set('email', p.email);
     setLabels(labels);
     renderSidebar();
+    if (typeof maybeShowWhatsNew === 'function') maybeShowWhatsNew();
     await loadList();
   } catch (e) {
     if (!(e instanceof AuthError)) showLogin('Gmail\'e bağlanılamadı: ' + e.message);
   }
 }
 
-(function boot() {
+function boot() {
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   if (DEMO) return start();
   if (!CLIENT_ID) return showSetup();
@@ -1492,4 +1687,6 @@ async function start() {
   if (Auth.token()) start();
   else if (store.get('email') && Date.now() - store.get('silentAt', 0) > 60000) Auth.login(true);
   else showLogin();
-})();
+}
+// Diğer betikler (takvim) de yüklendikten sonra başla
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
