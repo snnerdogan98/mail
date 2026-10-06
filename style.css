@@ -394,3 +394,60 @@ body { font-size: 14.5px; }
 .tag-clash { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--danger); font-weight: 600; }
 .tag-clash svg { width: 14px; height: 14px; }
 .warn-line { margin: 0; font-size: 13px; color: var(--danger); }
+
+.reader-bar { padding-left: 32px; gap: 4px; }
+@media (max-width: 800px) { .reader-bar { padding-left: 10px; } }
+
+/* Etiket seçici: sade liste, seçilince sağda onay işareti */
+.pick { position: relative; gap: 12px; padding: 10px 18px 10px calc(20px + var(--d) * 20px); border-radius: 0; font-size: 14.5px; }
+.pick input { position: absolute; opacity: 0; pointer-events: none; }
+.pick .pick-name { flex: 1; }
+.pick .pick-check { display: none; color: var(--fg); }
+.pick .pick-check svg { width: 18px; height: 18px; }
+.pick:has(input:checked) { background: var(--sel); font-weight: 600; }
+.pick:has(input:checked) .pick-check { display: inline-flex; }
+.pick:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sug-label .ldot { margin: 0 2px; }
+
+/* Sürükle bırak */
+.row[draggable="true"] { -webkit-user-drag: element; }
+.row.dragging { opacity: .45; }
+.drag-ghost { position: fixed; top: -100px; left: -100px; max-width: 280px; padding: 8px 14px; border-radius: 10px;
+  background: #26282c; color: #eceef1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow); }
+body.is-dragging .sidebar .nav-item[data-action="open-label"] { transition: background .1s; }
+.sidebar .nav-item.drop-over { background: var(--silver) !important; color: #1b1d21; outline: 1px solid var(--silver-line); }
+.sidebar .nav-item.drop-over .nav-name, .sidebar .nav-item.drop-over svg { color: #1b1d21; }
+
+/* Etiket rengi seçici */
+.dot-btn { display: inline-grid; place-items: center; width: 18px; height: 18px; margin: 0 1px; border-radius: 50%; cursor: pointer; }
+.dot-btn:hover { background: rgba(255,255,255,.12); }
+.dot-btn:hover .ldot { transform: scale(1.35); }
+.dot-btn .ldot { margin: 0; transition: transform .12s; }
+.color-pop {
+  position: fixed; z-index: 70; width: 236px; padding: 12px; border-radius: 14px;
+  background: var(--bg-2); border: 1px solid var(--line); box-shadow: var(--shadow); animation: fade .12s;
+}
+.cp-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; margin: 0 2px 10px; }
+.cp-head b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.cp-sw { width: 22px; height: 22px; border-radius: 50%; border: 0; background: var(--c); cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); transition: transform .1s; }
+.cp-sw:hover { transform: scale(1.15); }
+.cp-sw.on { box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 4px var(--fg); }
+.cp-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.cp-custom { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--fg-2); cursor: pointer; }
+.cp-custom input { width: 22px; height: 22px; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.cp-custom input::-webkit-color-swatch-wrapper { padding: 0; }
+.cp-custom input::-webkit-color-swatch { border: 1px solid var(--line); border-radius: 50%; }
+.cp-reset { border: 0; background: none; color: var(--fg-3); font-size: 12.5px; cursor: pointer; padding: 4px; }
+.cp-reset:hover { color: var(--fg); }
+
+/* Gmail tarzı dolu etiket rozetleri */
+.tchip {
+  display: inline-block; max-width: 150px; padding: 1px 7px; border-radius: 4px;
+  background: var(--bg); color: var(--ink); font-size: 11.5px; font-weight: 600; line-height: 1.55;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle;
+}
+.chips { gap: 5px; margin-top: 6px; }
+.t-chips .tchip { font-size: 12px; padding: 2px 9px; max-width: none; }
+.rule-main .tchip { max-width: none; }

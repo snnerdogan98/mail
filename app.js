@@ -161,6 +161,18 @@ const IC = {
   caret: svg('<path d="m9 6 6 6-6 6"/>', 'class="caret-ic"'),
   check: svg('<path d="m5 12 5 5L20 7"/>'),
 };
+// Etiket rozeti: zemin etiketin rengi, yazı rengi zemine göre otomatik (koyu zeminde beyaz, açıkta siyah)
+function inkFor(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return '#1d1f23';
+  const n = parseInt(m[1], 16), lin = v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; };
+  const L = .2126 * lin(n >> 16) + .7152 * lin((n >> 8) & 255) + .0722 * lin(n & 255);
+  return L > .4 ? '#1d1f23' : '#ffffff';
+}
+const tagChip = (l, text) => {
+  const bg = /^#[0-9a-f]{6}$/i.test(l.color || '') ? l.color : '#aab0b8';
+  return `<span class="tchip" style="--bg:${bg};--ink:${inkFor(bg)}" title="${esc(l.name)}">${esc(text)}</span>`;
+};
 const dot = color => `<span class="ldot" style="--c:${esc(color || '#8a8a8a')}"></span>`;
 const tagIcon = color => `<svg class="tagic" viewBox="0 0 20 14" width="18" height="13"><path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h11l5 6-5 6h-11A1.5 1.5 0 0 1 1 11.5z" fill="${esc(color || '#8a8a8a')}"/></svg>`;
 
@@ -218,13 +230,44 @@ const Auth = {
 
 class AuthError extends Error {}
 
+/* Gmail'in kota sınırı: kullanıcı başına dakikada ~15.000 "birim".
+   Her istek türünün bir maliyeti var; istekleri bu sınırın altında kalacak şekilde sıraya koyuyoruz. */
+const QUOTA = { perMinute: 11000, perSecond: 220 };
+function costOf(path, method) {
+  if (path === 'messages/send') return 100;
+  if (path.endsWith('batchModify')) return 50;
+  if (/^threads\/[^/]+$/.test(path) && method === 'GET') return 10;
+  if (/\/(modify|trash)$/.test(path)) return path.startsWith('threads') ? 10 : 5;
+  if (path.startsWith('labels')) return 1;
+  return 5;
+}
+const Quota = {
+  log: [],             // [zaman, birim]
+  pausedUntil: 0,
+  used(ms) { const t = Date.now() - ms; return this.log.reduce((s, [at, c]) => at > t ? s + c : s, 0); },
+  async take(cost) {
+    for (;;) {
+      const now = Date.now();
+      this.log = this.log.filter(([at]) => at > now - 60000);
+      if (now >= this.pausedUntil && this.used(60000) + cost <= QUOTA.perMinute && this.used(1000) + cost <= QUOTA.perSecond) {
+        this.log.push([now, cost]); return;
+      }
+      await sleep(Math.max(120, this.pausedUntil - now));
+    }
+  },
+  backoff(ms) { this.pausedUntil = Math.max(this.pausedUntil, Date.now() + ms); }
+};
+const isRateLimit = (status, msg) => status === 429 || (status === 403 && /rate|quota|limit/i.test(msg));
+
 async function call(path, { method = 'GET', body, query } = {}) {
   const url = new URL(API + path);
   if (query) for (const [k, v] of Object.entries(query)) {
     if (Array.isArray(v)) v.forEach(x => url.searchParams.append(k, x));
     else if (v != null && v !== '') url.searchParams.set(k, v);
   }
+  const cost = costOf(path, method);
   for (let attempt = 0; ; attempt++) {
+    await Quota.take(cost);
     const tok = Auth.token();
     if (!tok) { Auth.reauth(); throw new AuthError('oturum'); }
     const res = await fetch(url, {
@@ -233,10 +276,17 @@ async function call(path, { method = 'GET', body, query } = {}) {
       body: body ? JSON.stringify(body) : undefined
     });
     if (res.status === 401) { Auth.reauth(); throw new AuthError('oturum'); }
-    if ((res.status === 429 || res.status >= 500) && attempt < 4) { await sleep(600 * 2 ** attempt); continue; }
     if (!res.ok) {
       let msg = res.status + '';
       try { msg = (await res.json()).error.message; } catch {}
+      // Kotaya takıldıysak bir süre herkes beklesin, sonra aynı isteği tekrar dene (en fazla ~2 dakika)
+      if (isRateLimit(res.status, msg) && attempt < 6) {
+        const wait = Math.min(60000, 5000 * 2 ** attempt);
+        Quota.backoff(wait);
+        if (wait >= 10000) toast('Gmail kısa bir mola istedi, birkaç saniye içinde devam ediliyor…', [], wait);
+        continue;
+      }
+      if (res.status >= 500 && attempt < 4) { await sleep(800 * 2 ** attempt); continue; }
       throw new Error(msg);
     }
     if (res.status === 204) return {};
@@ -381,6 +431,13 @@ function setLabels(labels) {
       if (p) { l.parentId = p.id; l.short = parts.slice(i).join('/'); break; }
     }
   }
+  // Uygulamaya özel renkler (sadece bu tarayıcıda; Gmail'deki renge dokunmaz)
+  const custom = store.get('labelColors', {});
+  for (const l of labels) {
+    if (l.type !== 'user') continue;
+    l.gmailColor = l.color;
+    if (custom[l.id]) l.color = custom[l.id];
+  }
   S.labels = labels;
   S.labelById = Object.fromEntries(labels.map(l => [l.id, l]));
 }
@@ -470,7 +527,7 @@ function renderSidebar() {
   const renderNode = (pid, depth) => (kids.get(pid) || []).map(l => {
     const hasKids = kids.has(l.id);
     const collapsed = !!S.collapsed[l.id];
-    return navItem({ id: l.id, html: dot(l.color), name: l.short, count: l.unread, depth, caret: hasKids, collapsed, key: l.id })
+    return navItem({ id: l.id, html: `<span class="dot-btn" data-action="color-label" data-id="${l.id}" title="Rengini değiştir">${dot(l.color)}</span>`, name: l.short, count: l.unread, depth, caret: hasKids, collapsed, key: l.id })
       + (hasKids && !collapsed ? renderNode(l.id, depth + 1) : '');
   }).join('');
 
@@ -529,9 +586,9 @@ function renderList(loading) {
   const showTo = S.labelId === 'SENT' || S.labelId === 'DRAFT';
   const items = S.threads.map(t => {
     const chips = t.labelIds.map(id => S.labelById[id]).filter(l => l && l.type === 'user' && l.id !== S.labelId)
-      .map(l => `<span class="lchip">${dot(l.color)}${esc(shortName(l))}</span>`).join('');
+      .map(l => tagChip(l, l.name)).join('');
     const who = showTo ? 'Kime: ' + (t.to || '') : t.from;
-    return `<div class="row ${t.unread ? 'unread' : ''} ${S.threadId === t.id ? 'sel' : ''}" data-action="open-thread" data-id="${t.id}">
+    return `<div class="row ${t.unread ? 'unread' : ''} ${S.threadId === t.id ? 'sel' : ''}" data-action="open-thread" data-id="${t.id}" draggable="true">
       <div class="row-main">
         <div class="row-top"><span class="who">${esc(who)}${t.count > 1 ? ` <i>${t.count}</i>` : ''}</span><span class="date">${fmtDate(t.date)}</span></div>
         <div class="subj">${t.starred ? '<span class="st">★</span>' : ''}${esc(t.subject || '(konu yok)')}</div>
@@ -576,13 +633,13 @@ function readerButtons() {
   const starred = t?.labelIds.includes('STARRED');
   return `
     <button class="icon-btn back" data-action="back" aria-label="Geri">${IC.back}</button>
-    <div class="spacer"></div>
     <button class="icon-btn" data-action="archive" title="Arşivle">${IC.archive}</button>
     <button class="icon-btn" data-action="trash" title="Sil">${IC.trash}</button>
     <button class="icon-btn" data-action="mark-unread" title="Okunmadı yap">${IC.unread}</button>
     <button class="icon-btn ${starred ? 'on' : ''}" data-action="star" title="Yıldızla">${starred ? IC.starFill : IC.star}</button>
     <button class="icon-btn" data-action="labels" title="Etiketler">${IC.tag}</button>
-    <button class="icon-btn" data-action="block" title="Göndericiyi engelle">${IC.block}</button>`;
+    <button class="icon-btn" data-action="block" title="Göndericiyi engelle">${IC.block}</button>
+    <div class="spacer"></div>`;
 }
 
 function renderThread() {
@@ -591,7 +648,7 @@ function renderThread() {
   const prevScroll = r.querySelector('.reader-scroll')?.scrollTop || 0;
   const msgs = t.messages;
   const chips = t.labelIds.map(id => S.labelById[id]).filter(l => l && l.type === 'user')
-    .map(l => `<span class="lchip">${dot(l.color)}${esc(l.name.replace('/', ' › '))}</span>`).join('');
+    .map(l => tagChip(l, l.name)).join('');
   r.innerHTML = `
     <div class="reader-bar">${readerButtons()}</div>
     <div class="reader-scroll">
@@ -828,7 +885,7 @@ function openLabelPicker() {
       <div class="pick-list">
         ${userLabels().map(l => {
           let depth = 0; for (let p = l; p.parentId; p = S.labelById[p.parentId]) depth++;
-          return `<label class="pick" style="--d:${depth}"><input type="checkbox" value="${l.id}" ${has.has(l.id) ? 'checked' : ''}>${tagIcon(l.color)}<span>${esc(shortName(l))}</span></label>`;
+          return `<label class="pick" style="--d:${depth}"><input type="checkbox" value="${l.id}" ${has.has(l.id) ? 'checked' : ''}>${dot(l.color)}<span class="pick-name">${esc(shortName(l))}</span><i class="pick-check">${IC.check}</i></label>`;
         }).join('')}
       </div>
     </div>
@@ -978,7 +1035,7 @@ function renderAutoIntro() {
     ${mine.length ? mine.map(f => {
       const d = describeFilter(f);
       return `<div class="rule">
-        <div class="rule-main">${d.labels.map(l => `<span class="lchip">${dot(l.color)}${esc(shortName(l))}</span>`).join('')}
+        <div class="rule-main">${d.labels.map(l => tagChip(l, shortName(l))).join('')}
           <span class="rule-cond">${esc(d.cond)}</span>${d.skip ? '<span class="tag-skip">Doğrudan etiketine gider</span>' : '<span class="tag-muted">Gelen kutusunda da görünür</span>'}</div>
         ${d.skip ? '' : `<button class="btn sm" data-action="redirect-filter" data-id="${f.id}">Etiketine yönlendir</button>`}
         <button class="icon-btn" data-action="del-filter" data-id="${f.id}" title="Kuralı sil">${IC.trash}</button></div>`;
@@ -1057,7 +1114,7 @@ function renderSuggestions() {
     </div>
     ${groups.map(([lid, list]) => {
       const l = S.labelById[lid];
-      return `<div class="sug-group"><div class="sug-label">${tagIcon(l.color)} ${esc(l.name.replace('/', ' › '))}</div>
+      return `<div class="sug-group"><div class="sug-label">${dot(l.color)} ${esc(l.name.replace('/', ' › '))}</div>
         ${list.map(s => `<div class="sug">
           <label class="check grow"><input type="checkbox" data-sug="${s.i}" ${s.on ? 'checked' : ''}><span><b>${esc(s.key)}</b><small>${s.count} mail</small></span></label>
           <label class="toggle"><input type="checkbox" data-keep="${s.i}"><span>Gelen kutusunda da göster</span></label>
@@ -1068,7 +1125,7 @@ function renderSuggestions() {
       ${conflicts.map(c => `<div class="sug-group"><div class="sug-label">${IC.alert} <b>${esc(c.key)}</b></div>
         ${c.labels.map((x, j) => {
           const l = S.labelById[x.labelId];
-          return `<label class="field inline">${tagIcon(l.color)}<span>${esc(l.name.replace('/', ' › '))} <small>(${x.count})</small></span>
+          return `<label class="field inline">${dot(l.color)}<span>${esc(l.name.replace('/', ' › '))} <small>(${x.count})</small></span>
             <input type="text" placeholder="ayırt edici kelime" data-conf="${c.i}" data-j="${j}"></label>`;
         }).join('')}</div>`).join('')}` : ''}
     <div class="sticky-actions"><button class="btn" data-action="auto">Vazgeç</button><button class="btn primary" data-action="apply-rules">${IC.check} Kuralları oluştur</button></div>`;
@@ -1183,6 +1240,7 @@ const ACTIONS = {
     renderSidebar(); loadList();
   },
   'toggle-more': () => { S.collapsed.__more = S.collapsed.__more === false; store.set('collapsed', S.collapsed); renderSidebar(); },
+  'color-label': (el, e) => { e.stopPropagation(); openColorPicker(el.dataset.id, el.closest('.nav-item')); },
   'toggle-node': (el, e) => {
     e.stopPropagation();
     const k = el.dataset.key;
@@ -1256,6 +1314,142 @@ const ACTIONS = {
     catch (e) { if (!(e instanceof AuthError)) toast(e.message); }
   }
 };
+
+/* ───────────── Etiket rengi (uygulamaya özel) ───────────── */
+
+const PALETTE = [
+  '#e5484d', '#f76b15', '#ffb224', '#f5d90a', '#99d52a', '#46a758', '#12a594', '#00a2c7',
+  '#0090ff', '#3e63dd', '#6e56cf', '#ab4aba', '#d6409f', '#e93d82', '#ad7f58', '#978365',
+  '#1c1e21', '#4a4f57', '#7d838c', '#aab0b8', '#d0d4d9', '#f1f3f5'
+];
+
+function openColorPicker(labelId, anchor) {
+  const l = S.labelById[labelId];
+  if (!l) return;
+  closeColorPicker();
+  const custom = store.get('labelColors', {});
+  const cur = (l.color || '').toLowerCase();
+  const pop = document.createElement('div');
+  pop.className = 'color-pop';
+  pop.innerHTML = `
+    <div class="cp-head">${dot(l.color)}<b>${esc(shortName(l))}</b></div>
+    <div class="cp-grid">${PALETTE.map(c => `<button class="cp-sw ${c === cur ? 'on' : ''}" style="--c:${c}" data-c="${c}" title="${c}"></button>`).join('')}</div>
+    <div class="cp-foot">
+      <label class="cp-custom" title="İstediğin rengi seç"><input type="color" value="${/^#[0-9a-f]{6}$/i.test(cur) ? cur : '#7d838c'}"><span>Özel renk</span></label>
+      ${custom[labelId] ? `<button class="cp-reset">Gmail rengine dön</button>` : ''}
+    </div>`;
+  document.body.appendChild(pop);
+  const r = anchor.getBoundingClientRect();
+  const top = Math.min(r.top - 8, innerHeight - pop.offsetHeight - 12);
+  pop.style.top = Math.max(12, top) + 'px';
+  pop.style.left = Math.min(r.right + 10, innerWidth - pop.offsetWidth - 12) + 'px';
+  const apply = c => {
+    const m = store.get('labelColors', {});
+    if (c) m[labelId] = c; else delete m[labelId];
+    store.set('labelColors', m);
+    l.color = c || l.gmailColor;
+    renderSidebar(); renderList();
+    if (S.thread && S.view === 'thread') renderThread();
+  };
+  pop.addEventListener('click', e => {
+    e.stopPropagation();
+    const sw = e.target.closest('.cp-sw');
+    if (sw) { apply(sw.dataset.c); closeColorPicker(); }
+    if (e.target.closest('.cp-reset')) { apply(null); closeColorPicker(); }
+  });
+  const inp = pop.querySelector('input[type=color]');
+  inp.addEventListener('input', () => { l.color = inp.value; pop.querySelector('.cp-head .ldot').style.setProperty('--c', inp.value); });
+  inp.addEventListener('change', () => { apply(inp.value); closeColorPicker(); });
+  setTimeout(() => document.addEventListener('mousedown', outsideColor), 0);
+}
+function outsideColor(e) { if (!e.target.closest('.color-pop')) closeColorPicker(); }
+function closeColorPicker() {
+  document.querySelectorAll('.color-pop').forEach(p => p.remove());
+  document.removeEventListener('mousedown', outsideColor);
+}
+// Etikete sağ tıklayınca da renk seçici açılsın
+document.addEventListener('contextmenu', e => {
+  const nav = e.target.closest?.('.sidebar .nav-item[data-action="open-label"]');
+  if (!nav || S.labelById[nav.dataset.id]?.type !== 'user') return;
+  e.preventDefault();
+  openColorPicker(nav.dataset.id, nav);
+});
+
+/* ───────────── Sürükle bırak: maili sol menüdeki etikete/klasöre taşı ───────────── */
+
+const DROP_OK = id => id && (S.labelById[id]?.type === 'user' || ['INBOX', 'TRASH', 'SPAM', 'STARRED'].includes(id));
+let dragId = null;
+
+document.addEventListener('dragstart', e => {
+  const row = e.target.closest?.('.row[data-id]');
+  if (!row) return;
+  dragId = row.dataset.id;
+  row.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', dragId);
+  const t = S.threads.find(x => x.id === dragId);
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  ghost.textContent = t?.subject || '(konu yok)';
+  document.body.appendChild(ghost);
+  e.dataTransfer.setDragImage(ghost, 12, 12);
+  setTimeout(() => ghost.remove(), 0);
+  document.body.classList.add('is-dragging');
+});
+document.addEventListener('dragend', () => {
+  dragId = null;
+  document.body.classList.remove('is-dragging');
+  document.querySelectorAll('.dragging, .drop-over').forEach(el => el.classList.remove('dragging', 'drop-over'));
+});
+document.addEventListener('dragover', e => {
+  if (!dragId) return;
+  const nav = e.target.closest?.('.nav-item[data-action="open-label"]');
+  document.querySelectorAll('.drop-over').forEach(el => el !== nav && el.classList.remove('drop-over'));
+  if (!nav || !DROP_OK(nav.dataset.id) || nav.dataset.id === S.labelId) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  nav.classList.add('drop-over');
+});
+document.addEventListener('drop', async e => {
+  const nav = e.target.closest?.('.nav-item[data-action="open-label"]');
+  const id = dragId;
+  if (!nav || !id) return;
+  e.preventDefault();
+  nav.classList.remove('drop-over');
+  await dropOnto(id, nav.dataset.id);
+});
+
+async function dropOnto(threadId, target) {
+  const t = S.threads.find(x => x.id === threadId);
+  if (!t) return;
+  const from = S.labelId;
+  const name = SYSTEM.find(s => s[0] === target)?.[1] || shortName(S.labelById[target]);
+  try {
+    if (target === 'TRASH') {
+      await Gmail.trashThread(threadId);
+      removeFromList(threadId);
+    } else if (target === 'STARRED') {
+      await Gmail.modifyThread(threadId, ['STARRED'], []);
+      markLocal(threadId, ['STARRED'], []);
+      toast('Yıldızlandı'); return;
+    } else {
+      // Gmail'deki gibi "taşı": yeni etiketi ekle, bulunduğu yerden (gelen kutusu ya da önceki etiket) çıkar
+      const remove = [];
+      if (from === 'INBOX' || (S.labelById[from]?.type === 'user')) remove.push(from);
+      if (target === 'INBOX') remove.push('SPAM', 'TRASH');
+      if (target === 'SPAM') remove.push('INBOX');
+      const rm = remove.filter(x => x !== target);
+      await Gmail.modifyThread(threadId, [target], rm);
+      markLocal(threadId, [target], rm);
+      if (rm.includes(from) && !S.q) removeFromList(threadId);
+    }
+    if (S.threadId === threadId && !S.threads.some(x => x.id === threadId)) closeReader();
+    renderList(); refreshCountsSoon();
+    if (S.labelById[target]?.type === 'user') {
+      offerRule({ messages: [{ fromEmail: t.fromEmail }] }, target);
+    } else toast(`${name} klasörüne taşındı`);
+  } catch (err) { if (!(err instanceof AuthError)) toast('Taşınamadı: ' + err.message); }
+}
 
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]');
