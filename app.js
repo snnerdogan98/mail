@@ -4,7 +4,7 @@
  */
 'use strict';
 
-const APP_VERSION = 'V0.2';
+const APP_VERSION = 'V0.3';
 const CLIENT_ID = (window.MAIL_CONFIG && window.MAIL_CONFIG.CLIENT_ID || '').trim();
 const DEMO = new URLSearchParams(location.search).has('demo');
 const SCOPES = [
@@ -225,13 +225,28 @@ const tagIcon = color => `<svg class="tagic" viewBox="0 0 20 14" width="18" heig
 
 /* ───────────── Google girişi (OAuth, tarayıcı içi) ───────────── */
 
+// Windows programı (Electron) içinde mi çalışıyoruz? Orada giriş programın kendisi tarafından yapılır.
+const DESKTOP = !!(window.mailDesktop && !DEMO);
+const keepDesktopToken = t => { if (t?.token) store.set('auth', { token: t.token, exp: t.exp, scope: t.scope || '' }); return t?.token || null; };
+
 const Auth = {
+  // Programda: kayıtlı oturumdan yeni anahtar al (tarayıcı açılmaz)
+  async desktopRefresh() {
+    try { return keepDesktopToken(await window.mailDesktop.getToken()); } catch { return null; }
+  },
   redirectUri() { return location.origin + location.pathname.replace(/index\.html$/, ''); },
   token() {
     const t = store.get('auth');
     return t && t.exp > Date.now() + 30000 ? t.token : null;
   },
   login(silent) {
+    if (DESKTOP) {
+      if (silent) return this.desktopRefresh().then(t => t ? start() : showLogin());
+      showLogin('Tarayıcında Google girişi açıldı. Giriş yapınca buraya dönebilirsin.');
+      return window.mailDesktop.login(SCOPES, store.get('email') || '')
+        .then(t => { keepDesktopToken(t); start(); })
+        .catch(e => showLogin(/zaman|access_denied/.test(e.message) ? 'Giriş tamamlanmadı, tekrar dene.' : 'Giriş yapılamadı: ' + e.message));
+    }
     const state = Math.random().toString(36).slice(2);
     store.set('oauthState', state);
     if (silent) store.set('silentAt', Date.now());
@@ -261,11 +276,13 @@ const Auth = {
   // Süre dolunca sessizce yeniler; az önce denendiyse giriş ekranına döner
   reauth() {
     store.del('auth');
+    if (DESKTOP) { showLogin(); return; }
     const last = store.get('silentAt', 0);
     if (Date.now() - last > 60000 && store.get('email')) this.login(true);
     else showLogin();
   },
   logout() {
+    if (DESKTOP) { window.mailDesktop.logout(); store.del('auth'); store.del('email'); showLogin(); return; }
     const t = store.get('auth');
     if (t) fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(t.token), { method: 'POST' }).catch(() => {});
     store.del('auth'); store.del('email');
@@ -282,7 +299,7 @@ class AuthError extends Error {}
 const QUOTA = { perMinute: 11000, perSecond: 220 };
 function costOf(path, method) {
   if (path.startsWith('https://')) return 0;      // takvim isteği: Gmail kotasına sayılmaz
-  if (path === 'messages/send') return 100;
+  if (path === 'messages/send' || path === 'drafts/send') return 100;
   if (path.endsWith('batchModify')) return 50;
   if (/^threads\/[^/]+$/.test(path) && method === 'GET') return 10;
   if (/\/(modify|trash)$/.test(path)) return path.startsWith('threads') ? 10 : 5;
@@ -316,14 +333,19 @@ async function call(path, { method = 'GET', body, query } = {}) {
   const cost = costOf(path, method);
   for (let attempt = 0; ; attempt++) {
     await Quota.take(cost);
-    const tok = Auth.token();
+    let tok = Auth.token();
+    if (!tok && DESKTOP) tok = await Auth.desktopRefresh();
     if (!tok) { Auth.reauth(); throw new AuthError('oturum'); }
     const res = await fetch(url, {
       method,
       headers: { Authorization: 'Bearer ' + tok, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined
     });
-    if (res.status === 401) { Auth.reauth(); throw new AuthError('oturum'); }
+    if (res.status === 401) {
+      store.del('auth');
+      if (DESKTOP && attempt < 1 && await Auth.desktopRefresh()) continue;
+      Auth.reauth(); throw new AuthError('oturum');
+    }
     if (!res.ok) {
       let msg = res.status + '';
       try { msg = (await res.json()).error.message; } catch {}
@@ -402,7 +424,7 @@ function parseMessage(m) {
   };
 }
 
-function buildRaw({ to, cc, subject, body, inReplyTo, references }) {
+function buildRaw({ to, cc, subject, body, inReplyTo, references, scheduledAt }) {
   const encWord = s => /^[\x20-\x7e]*$/.test(s) ? s : '=?UTF-8?B?' + bytesToB64(utf8(s)) + '?=';
   const addrs = s => emailsIn(s).join(', ');
   const lines = [`To: ${addrs(to)}`];
@@ -410,6 +432,8 @@ function buildRaw({ to, cc, subject, body, inReplyTo, references }) {
   lines.push(`Subject: ${encWord(subject || '')}`, 'MIME-Version: 1.0',
     'Content-Type: text/plain; charset=UTF-8', 'Content-Transfer-Encoding: base64');
   if (inReplyTo) lines.push(`In-Reply-To: ${inReplyTo}`, `References: ${[references, inReplyTo].filter(Boolean).join(' ')}`);
+  // Zamanlanmış gönderim: Google zamanlayıcısı ve uygulama bu başlığa bakar
+  if (scheduledAt) lines.push(`X-Mail-Scheduled: ${new Date(scheduledAt).toISOString()}`);
   const b = bytesToB64(utf8(body || '')).replace(/.{76}/g, '$&\r\n');
   return toB64url(lines.join('\r\n') + '\r\n\r\n' + b);
 }
@@ -584,7 +608,8 @@ function renderSidebar() {
     // Notlar etiketi, etiketlerden ayrı olarak Gönderilmiş'in altında durur
     if (id !== 'SENT') return item;
     return item + (notes ? navItem({ id: notes.id, html: IC.note, name: 'Notlar', count: notes.unread, depth: 0 }) : '')
-      + `<div class="nav-item ${S.view === 'cal' ? 'active' : ''}" data-action="open-cal" style="--d:0"><span class="caret-sp"></span>${IC.cal}<span class="nav-name">Takvim</span></div>`;
+      + `<div class="nav-item ${S.view === 'cal' ? 'active' : ''}" data-action="open-cal" style="--d:0"><span class="caret-sp"></span>${IC.cal}<span class="nav-name">Takvim</span></div>`
+      + (S.scheduled?.length ? `<div class="nav-item ${S.view === 'sched' ? 'active' : ''}" data-action="open-sched" style="--d:0"><span class="caret-sp"></span>${IC.clock}<span class="nav-name">Zamanlanmış</span><span class="count">${S.scheduled.length}</span></div>` : '');
   }).join('') + `<div class="nav-item tool more-toggle" data-action="toggle-more" style="--d:0"><span class="caret-sp"></span><span class="nav-name">${showMore ? 'Daha az' : 'Daha fazla'}</span></div>`;
 
   // Etiket ağacı: "Garanti/Annem Garanti" → Garanti'nin altında.
@@ -620,7 +645,7 @@ function renderSidebar() {
 }
 const caretBtn = (key, collapsed) => `<span class="caret ${collapsed ? '' : 'open'}" data-action="toggle-node" data-key="${esc(key)}">${IC.caret}</span>`;
 function navItem({ id, html, name, count, depth, caret, collapsed, key }) {
-  const active = S.view !== 'auto' && S.view !== 'cal' && !S.q && S.labelId === id;
+  const active = S.view !== 'auto' && S.view !== 'cal' && S.view !== 'sched' && !S.q && S.labelId === id;
   return `<div class="nav-item ${active ? 'active' : ''} ${count ? 'has-unread' : ''}" data-action="open-label" data-id="${esc(id)}" style="--d:${depth}">
     ${caret ? caretBtn(key, collapsed) : '<span class="caret-sp"></span>'}${html}
     <span class="nav-name">${esc(name)}</span>${count ? `<span class="count">${count}</span>` : ''}</div>`;
@@ -769,8 +794,8 @@ function renderNote(newNote) {
       <button class="icon-btn" data-action="trash" title="Notu sil">${IC.trash}</button>
     </div>
     <div class="reader-scroll note-view">
-      <input class="note-h" id="noteTitle" placeholder="Başlık" value="${esc(n.title)}" autocomplete="off">
-      <div class="note-body" id="noteBody" contenteditable="true" data-ph="Yazmaya başla…">${n.html}</div>
+      <input class="note-h" id="noteTitle" spellcheck="true" lang="tr" autocorrect="on" autocapitalize="sentences" placeholder="Başlık" value="${esc(n.title)}" autocomplete="off">
+      <div class="note-body" id="noteBody" contenteditable="true" spellcheck="true" lang="tr" autocorrect="on" autocapitalize="sentences" data-ph="Yazmaya başla…">${n.html}</div>
     </div>`;
   const ti = $('#noteTitle'), bo = $('#noteBody');
   const changed = () => {
@@ -1081,18 +1106,20 @@ function removeFromList(id) {
 /* Yazma, yanıtlama, iletme */
 
 function openCompose(init = {}) {
+  S.compose = init;
   $('#modal').innerHTML = `
   <div class="modal-bg">
     <form class="sheet compose" id="composeForm">
       <header class="sheet-head">
         <button type="button" class="icon-btn" data-action="close-modal">${IC.close}</button>
         <h3>${esc(init.title || 'Yeni posta')}</h3>
+        <button type="button" class="icon-btn sched-btn" data-action="sched-menu" title="Gönderme zamanını planla">${IC.clock}</button>
         <button type="submit" class="btn primary">${IC.send} Gönder</button>
       </header>
       <label class="field"><span>Kime</span><input name="to" type="text" inputmode="email" autocomplete="email" value="${esc(init.to || '')}" required></label>
       ${init.cc ? `<label class="field"><span>Cc</span><input name="cc" type="text" value="${esc(init.cc)}"></label>` : ''}
-      <label class="field"><span>Konu</span><input name="subject" type="text" value="${esc(init.subject || '')}"></label>
-      <textarea name="body" placeholder="Mesajını yaz…">${esc(init.body || '')}</textarea>
+      <label class="field"><span>Konu</span><input name="subject" type="text" spellcheck="true" lang="tr" autocorrect="on" autocapitalize="sentences" value="${esc(init.subject || '')}"></label>
+      <textarea name="body" spellcheck="true" lang="tr" autocorrect="on" autocapitalize="sentences" placeholder="Mesajını yaz…">${esc(init.body || '')}</textarea>
     </form>
   </div>`;
   const form = $('#composeForm');
@@ -1515,7 +1542,7 @@ const ACTIONS = {
   'open-label': el => {
     $('#shell').classList.remove('drawer');
     S.labelId = el.dataset.id; S.q = ''; $('#search').value = '';
-    if (S.view === 'auto') closeReader();
+    if (S.view === 'auto' || S.view === 'sched') closeReader();
     if (S.view === 'cal') { setView('list'); renderSidebar(); }
     renderSidebar(); loadList();
   },
@@ -1764,6 +1791,7 @@ async function start() {
     setLabels(labels);
     renderSidebar();
     if (typeof maybeShowWhatsNew === 'function') maybeShowWhatsNew();
+    if (typeof schedStart === 'function') schedStart();
     await loadList();
   } catch (e) {
     if (!(e instanceof AuthError)) showLogin('Gmail\'e bağlanılamadı: ' + e.message);
@@ -1773,6 +1801,10 @@ async function start() {
 function boot() {
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   if (DEMO) return start();
+  if (DESKTOP) {
+    if (Auth.token()) return start();
+    return Auth.desktopRefresh().then(t => t ? start() : showLogin());
+  }
   if (!CLIENT_ID) return showSetup();
   const r = Auth.handleRedirect();
   if (r && r !== 'ok') {

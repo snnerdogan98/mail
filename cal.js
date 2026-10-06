@@ -213,7 +213,7 @@ function openEventForm(init = {}) {
         <button type="submit" class="btn primary">Kaydet</button>
       </header>
       <div class="ev-body">
-        <input class="ev-title" name="title" placeholder="Başlık" value="${esc(ev?.summary ?? init.title ?? '')}" autocomplete="off" required>
+        <input class="ev-title" name="title" spellcheck="true" lang="tr" autocorrect="on" autocapitalize="sentences" placeholder="Başlık" value="${esc(ev?.summary ?? init.title ?? '')}" autocomplete="off" required>
         <label class="check"><input type="checkbox" name="allDay" ${allDay ? 'checked' : ''}> Tüm gün</label>
         <div class="ev-row">${IC.clock}
           <input type="date" name="sd" value="${ymd(start)}" required>
@@ -228,7 +228,7 @@ function openEventForm(init = {}) {
           <label title="Varsayılan"><input type="radio" name="color" value="" ${!color ? 'checked' : ''}><i style="--c:${EV_DEFAULT}"></i></label>
           ${Object.entries(EV_COLORS).map(([k, c]) => `<label><input type="radio" name="color" value="${k}" ${String(color) === k ? 'checked' : ''}><i style="--c:${c}"></i></label>`).join('')}
         </div>
-        <textarea name="desc" placeholder="Açıklama">${esc(ev?.description ?? init.description ?? '')}</textarea>
+        <textarea name="desc" spellcheck="true" lang="tr" autocorrect="on" autocapitalize="sentences" placeholder="Açıklama">${esc(ev?.description ?? init.description ?? '')}</textarea>
         ${ev?.htmlLink ? `<a class="ev-link" href="${esc(ev.htmlLink)}" target="_blank" rel="noopener">Google Takvim'de aç</a>` : ''}
       </div>
       ${ev ? `<div class="ev-foot"><button type="button" class="btn danger-ghost" data-action="cal-delete" data-id="${esc(ev.id)}">${IC.trash} Sil</button></div>` : ''}

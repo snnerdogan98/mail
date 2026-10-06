@@ -42,6 +42,18 @@ function openSettings() {
             <button class="btn" data-action="set-reset-colors" ${customColors ? '' : 'disabled'}>Gmail renklerine dön</button></div>
         </section>
         <section>
+          <h4>Yazım</h4>
+          <div class="set-row"><div><b>Cümle başını büyük harfle başlat</b><span>Nokta, soru ve ünlem işaretinden sonra ve satır başında</span></div>${sw('acSentence', acOn('acSentence'))}</div>
+          <div class="set-row"><div><b>Özel isimleri büyük harfle yaz</b><span>${acLearned().length ? `Maillerindeki ${acLearned().length} kişinin adı` : 'Maillerindeki kişilerin adları'}, şehirler, ülkeler, diller. Yanlış düzeltirse hemen ← Geri silme ile geri al.</span></div>${sw('acNames', acOn('acNames'))}</div>
+          <div class="set-col"><b>Kendi kelimelerim</b><span>Hep böyle yazılmasını istediğin isimler, virgülle ayır</span>
+            <textarea id="acMine" rows="2" placeholder="Örn: Sinan Erdoğan, Enpara, Kadıköy">${esc(acMine().join(', '))}</textarea></div>
+        </section>
+        <section>
+          <h4>Zamanlanmış gönderim</h4>
+          <div class="set-row"><div><b>Google zamanlayıcısı</b><span>${store.get('schedScript') ? 'Kurulu: zamanlanmış postalar cihazların kapalıyken de tam saatinde gider' : 'Kurulu değil: zamanlanmış postalar sadece uygulama açıkken gider'}</span></div>
+            <button class="btn" data-action="sched-setup">${IC.clock}${store.get('schedScript') ? 'Kurulum' : 'Kur'}</button></div>
+        </section>
+        <section>
           <h4>Otomatik etiketleme</h4>
           <div class="set-row"><div><b>Kurallar ve engellenenler</b><span>${autoSummary()}</span></div>
             <button class="btn" data-action="set-open-auto">${IC.wand}Aç</button></div>
@@ -88,6 +100,7 @@ Object.assign(ACTIONS, {
   'set-toggle': el => {
     if (el.dataset.k === 'labels') S.collapsed.__labels = !S.collapsed.__labels;
     if (el.dataset.k === 'more') S.collapsed.__more = S.collapsed.__more === false;
+    if (el.dataset.k === 'acSentence' || el.dataset.k === 'acNames') { store.set(el.dataset.k, !acOn(el.dataset.k)); return openSettings(); }
     store.set('collapsed', S.collapsed);
     renderSidebar(); openSettings();
   },
@@ -111,4 +124,13 @@ Object.assign(ACTIONS, {
     } catch {}
     location.reload();
   }
+});
+
+// Kendi kelimelerim: yazıp çıkınca kaydedilir
+document.addEventListener('change', e => {
+  if (e.target.id !== 'acMine') return;
+  const words = e.target.value.split(/[,\n]+/).map(w => w.trim().replace(/\s+/g, ' ')).filter(Boolean);
+  store.set('acMine', [...new Set(words)]);
+  acBuild();
+  toast(words.length ? `${words.length} kelime kaydedildi` : 'Kendi kelimelerin temizlendi');
 });

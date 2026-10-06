@@ -626,11 +626,12 @@ input.note-h::placeholder { color: var(--fg-3); }
 
 /* iPhone ana ekrandan açılınca: durum çubuğu "translucent" olduğunda iOS görünür alanı
    durum çubuğu kadar kısa hesaplıyor ve altta boşluk kalıyor. Yüksekliği o kadar uzat. */
-@media (display-mode: standalone) {
+/* Sadece iPhone/iPad'de geçerli (Windows'ta kurulu uygulamada sayfa taşıyordu) */
+@supports (-webkit-touch-callout: none) { @media (display-mode: standalone) {
   html, body { height: calc(100vh + env(safe-area-inset-top, 0px)); }
   #app, .shell { height: 100%; }
   .sidebar { min-height: calc(100vh + env(safe-area-inset-top, 0px)); }
-}
+} }
 @supports (-webkit-touch-callout: none) {
   html { background: var(--bg-2); }
   body { min-height: -webkit-fill-available; }
@@ -697,3 +698,47 @@ input.note-h::placeholder { color: var(--fg-3); }
 .sep-btn.on { background: var(--accent-soft); color: var(--fg); }
 /* Kenar çubuğunda sadece menü kayar; sürüm/⚙ satırı altta sabit kalır (cam görünümde de) */
 .sidebar nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; margin: 0 -4px; padding: 0 4px; }
+
+/* Bilgisayarda sayfa hiç kaymaz; her panel kendi içinde kayar */
+@media (min-width: 801px) { html, body { overflow: hidden; } }
+.set-col { display: flex; flex-direction: column; gap: 2px; padding: 9px 0; }
+.set-col b { font-weight: 600; font-size: 14.5px; }
+.set-col span { font-size: 12.5px; color: var(--fg-3); }
+.set-col textarea { margin-top: 8px; width: 100%; resize: vertical; font: inherit; font-size: 14px; padding: 9px 12px; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--bg-3); color: var(--fg); outline: none; }
+.set-col textarea:focus { border-color: var(--accent); }
+
+/* ───────── Zamanlanmış gönderim ───────── */
+.sheet.compose { position: relative; overflow: visible; }
+.sched-btn { flex: none; }
+.sched-pop { position: absolute; top: 54px; right: 12px; z-index: 5; width: min(340px, calc(100% - 24px)); padding: 8px; border-radius: 14px;
+  background: var(--bg-2); border: 1px solid var(--line); box-shadow: 0 14px 40px rgba(20,25,35,.22); animation: rise .15s ease-out; }
+.sp-title { font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--fg-3); padding: 6px 8px 8px; }
+.sp-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 10px;
+  background: none; color: var(--fg); font: inherit; font-size: 14px; cursor: pointer; text-align: left; }
+.sp-item:hover { background: var(--bg-3); }
+.sp-when { color: var(--fg-3); font-size: 12.5px; white-space: nowrap; }
+.sp-custom { display: flex; gap: 6px; padding: 8px 4px 4px; border-top: 1px solid var(--line); margin-top: 6px; }
+.sp-custom input, .si-edit input { flex: 1; min-width: 0; font: inherit; font-size: 13.5px; padding: 7px 9px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--bg-3); color: var(--fg); }
+.sp-note { font-size: 12px; color: var(--fg-3); padding: 8px 8px 4px; line-height: 1.4; }
+.sp-note a { color: var(--fg); font-weight: 600; }
+.sched-warn p { margin: 6px 0 12px; color: var(--fg-2); }
+.sched-item { padding: 14px 16px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg-2); margin-bottom: 10px; }
+.si-when { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.si-when svg { width: 17px; height: 17px; color: var(--fg-2); }
+.si-to { font-size: 13px; color: var(--fg-3); margin-top: 6px; }
+.si-subj { font-weight: 600; margin-top: 4px; }
+.si-snip { font-size: 13.5px; color: var(--fg-2); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.si-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 12px; }
+.si-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.si-actions .btn svg { width: 15px; height: 15px; }
+.si-actions .icon-btn { margin-left: auto; }
+.si-edit { display: flex; gap: 6px; margin-top: 10px; max-width: 380px; }
+.sheet.sched-setup { width: min(620px, 100%); }
+.steps { padding-left: 20px; margin: 10px 0 0; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.5; }
+.steps a { color: var(--fg); font-weight: 600; }
+.code-box { position: relative; margin-top: 8px; }
+.code-box pre { margin: 0; max-height: 220px; overflow: auto; padding: 12px 14px; border-radius: 12px; background: #1e2024; color: #e3e6ea;
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; }
+.code-box .btn { position: absolute; top: 8px; right: 8px; background: rgba(255,255,255,.9); }

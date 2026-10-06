@@ -3,6 +3,13 @@
 'use strict';
 
 const CHANGELOG = [
+  { v: 'V0.3', date: '6 Ekim 2026', items: [
+    ['Windows programı', 'Mail artık kurulabilen bir Windows programı olarak da var. Giriş bir kez tarayıcıda yapılır, program oturumu güvenle hatırlar.'],
+    ['Zamanlanmış gönderim', 'Yeni postada saat simgesiyle göndermeyi ileri bir zamana planla. Zamanlanmış postalar menüde ayrı bölümde; saatini değiştir, hemen gönder ya da iptal et. Google zamanlayıcısı kurulursa cihazların kapalıyken de tam saatinde gider.'],
+    ['Yazım düzeltmeleri', 'Cümle başı büyük harf; kişi, şehir, ülke, dil ve önemli yer adları (Anıtkabir, Ayasofya…) otomatik doğru yazılır. Yanlış düzeltirse Geri silme ile geri alınır. Ayarlar → Yazım bölümünden açılıp kapanır, kendi kelimelerini ekleyebilirsin.'],
+    ['Yazım denetimi', 'Posta, not ve takvim alanlarında Türkçe yazım denetimi.'],
+    ['Düzeltmeler', 'Uzun etiket listesinde sol menü artık aşağı kayıyor; Windows\'ta uygulama olarak açınca sağda çıkan gereksiz kaydırma çubuğu kaldırıldı.']
+  ]},
   { v: 'V0.2', date: '6 Ekim 2026', items: [
     ['Türkçe karakterler', 'Bazı maillerde "gÃ¼nÃ¼", "buluÅŸacaÄŸÄ±z" gibi bozuk görünen Türkçe harfler düzeltildi.'],
     ['Telefon numaraları', 'Maillerdeki telefon numaraları tıklanabilir; tıklayınca Ara, Kopyala ve (cep numaralarında) WhatsApp seçenekleri çıkar. İmzada numaranın sadece bir kısmı link olsa bile tam numara alınır.'],
