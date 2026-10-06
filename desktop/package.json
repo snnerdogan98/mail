@@ -1,0 +1,38 @@
+{
+  "name": "mail",
+  "productName": "Mail",
+  "version": "0.3.0",
+  "description": "Sinan'ın kişisel posta uygulaması",
+  "author": "Sinan Erdoğan",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.snnerdogan98.mail",
+    "productName": "Mail",
+    "copyright": "Sinan Erdoğan",
+    "files": ["main.js", "offline.html", "icon.png", "package.json"],
+    "win": { "target": "nsis", "icon": "icon.ico" },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mail",
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
+      "uninstallDisplayName": "Mail",
+      "installerLanguages": ["tr_TR"],
+      "language": "1055",
+      "artifactName": "Mail-Kurulum-${version}.exe"
+    }
+  }
+}
