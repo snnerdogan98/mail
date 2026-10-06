@@ -1,5 +1,5 @@
 // Uygulama dosyalarını önbelleğe alır; Gmail verilerine dokunmaz.
-const VERSION = 'mail-v25';
+const VERSION = 'mail-v26';
 const SHELL = ['./', 'index.html', 'style.css', 'cam.css', 'koyu.css', 'settings.js', 'app.js', 'cal.js', 'notes.js', 'mock.js', 'config.js',
   'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'icon-maskable.png'];
 

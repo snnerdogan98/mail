@@ -695,3 +695,5 @@ input.note-h::placeholder { color: var(--fg-3); }
 .sep-btn svg { width: 15px; height: 15px; }
 .sep-btn:hover { background: var(--bg-3); color: var(--fg); }
 .sep-btn.on { background: var(--accent-soft); color: var(--fg); }
+/* Kenar çubuğunda sadece menü kayar; sürüm/⚙ satırı altta sabit kalır (cam görünümde de) */
+.sidebar nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.25) transparent; margin: 0 -4px; padding: 0 4px; }
