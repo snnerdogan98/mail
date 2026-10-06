@@ -1,17 +1,15 @@
 // Mail — Windows programı. GitHub Pages'teki uygulamayı kendi penceresinde açar;
 // güncellemeler siteye yüklendikçe kendiliğinden gelir.
-const { app, BrowserWindow, shell, Menu } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron');
+const auth = require('./auth');
 const path = require('path');
 const fs = require('fs');
 
 const APP_URL = 'https://snnerdogan98.github.io/mail/';
 const APP_ORIGIN = new URL(APP_URL).origin;
-// Google girişi sırasında geçilen adresler (aynı pencerede kalmalı)
-const GOOGLE_LOGIN = /^https:\/\/([a-z0-9-]+\.)*(google\.com|google\.com\.tr|youtube\.com|gstatic\.com|googleusercontent\.com)\//i;
+
 
 app.setAppUserModelId('com.snnerdogan98.mail'); // görev çubuğunda kendi simgesi
-// Google, gömülü tarayıcılarda girişi engelliyor; standart Chrome kimliğiyle açılır.
-app.userAgentFallback = app.userAgentFallback.replace(/\s?Electron\/\S+/, '').replace(/\s?mail\/\S+/i, '');
 
 // Program zaten açıksa ikinci pencere açma, mevcut olanı öne getir
 if (!app.requestSingleInstanceLock()) { app.quit(); }
@@ -25,6 +23,27 @@ const saveState = win => {
   } catch {}
 };
 
+const OAUTH = /^https:\/\/accounts\.google\.com\/o\/oauth2\//;
+
+// Sitenin kendi giriş yönlendirmesi (eski sürümler dahil): Google'a gitmek yerine girişi
+// tarayıcıda yap, sonra anahtarı sitenin beklediği şekilde (#access_token=…) geri ver.
+async function webLogin(url) {
+  const q = new URL(url).searchParams;
+  const state = q.get('state') || '', scope = q.get('scope') || '';
+  const back = params => win && !win.isDestroyed() && win.loadURL(`${APP_URL}?d=${Date.now()}#` + new URLSearchParams({ state, ...params }));
+  const give = t => back({ access_token: t.token, token_type: 'Bearer', expires_in: String(Math.max(60, Math.floor((t.exp - Date.now()) / 1000))), scope: t.scope || scope });
+  try {
+    if (q.get('prompt') === 'none') {
+      const t = await auth.getToken();
+      return t ? give(t) : back({ error: 'login_required' });
+    }
+    give(await auth.login(scope, q.get('login_hint') || '', focusWin));
+  } catch (err) {
+    back({ error: 'access_denied' });
+  }
+}
+const focusWin = () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } };
+
 let win;
 function createWindow() {
   const st = loadState();
@@ -33,7 +52,7 @@ function createWindow() {
     minWidth: 380, minHeight: 500,
     title: 'Mail', icon: path.join(__dirname, 'icon.png'),
     backgroundColor: '#e8eaed', autoHideMenuBar: true, show: false,
-    webPreferences: { contextIsolation: true, sandbox: true, spellcheck: true }
+    webPreferences: { contextIsolation: true, sandbox: true, spellcheck: true, preload: path.join(__dirname, 'preload.js') }
   });
   win.webContents.session.setSpellCheckerLanguages(['tr', 'en-US']);
   if (st.max) win.maximize();
@@ -45,9 +64,11 @@ function createWindow() {
     if (/^(https?|mailto|tel):/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  // Aynı pencerede sadece uygulama ve Google girişi açılır; diğer her şey tarayıcıya
+  // Aynı pencerede sadece uygulama açılır. Google girişi yakalanıp tarayıcıda yapılır,
+  // diğer her şey varsayılan tarayıcıda açılır.
   win.webContents.on('will-navigate', (e, url) => {
-    if (url.startsWith(APP_ORIGIN) || GOOGLE_LOGIN.test(url)) return;
+    if (url.startsWith(APP_ORIGIN)) return;
+    if (OAUTH.test(url)) { e.preventDefault(); webLogin(url); return; }
     e.preventDefault();
     if (/^(https?|mailto|tel):/i.test(url)) shell.openExternal(url);
   });
@@ -84,8 +105,14 @@ Menu.setApplicationMenu(Menu.buildFromTemplate([{ label: 'Mail', submenu: [
   { role: 'zoomIn', label: 'Yakınlaştır' }, { role: 'zoomIn', accelerator: 'CmdOrCtrl+=', visible: false },
   { role: 'zoomOut', label: 'Uzaklaştır' }, { role: 'resetZoom', label: 'Gerçek boyut' },
   { role: 'toggleDevTools', label: 'Geliştirici araçları', accelerator: 'CmdOrCtrl+Shift+I' },
-  { type: 'separator' }, { role: 'quit', label: 'Çıkış' }
+  { type: 'separator' }, { label: 'Sürüm ' + app.getVersion(), enabled: false }, { role: 'quit', label: 'Çıkış' }
 ] }]));
+
+// Sayfadan gelen giriş istekleri (sadece kendi sitemizden)
+const fromApp = e => (e.senderFrame?.url || '').startsWith(APP_ORIGIN);
+ipcMain.handle('auth:get', e => fromApp(e) ? auth.getToken() : null);
+ipcMain.handle('auth:login', (e, scopes, hint) => fromApp(e) ? auth.login(String(scopes), hint ? String(hint) : '', focusWin) : null);
+ipcMain.handle('auth:logout', e => fromApp(e) ? auth.logout() : null);
 
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.whenReady().then(createWindow);

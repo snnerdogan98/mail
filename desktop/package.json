@@ -1,7 +1,7 @@
 {
   "name": "mail",
   "productName": "Mail",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Sinan'ın kişisel posta uygulaması",
   "author": "Sinan Erdoğan",
   "main": "main.js",
