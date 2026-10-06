@@ -4,7 +4,7 @@
  */
 'use strict';
 
-const APP_VERSION = 'V0.1';
+const APP_VERSION = 'V0.2';
 const CLIENT_ID = (window.MAIL_CONFIG && window.MAIL_CONFIG.CLIENT_ID || '').trim();
 const DEMO = new URLSearchParams(location.search).has('demo');
 const SCOPES = [
@@ -57,10 +57,36 @@ function bytesToB64(bytes) {
 const utf8 = s => new TextEncoder().encode(s);
 const toB64url = s => bytesToB64(utf8(s)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
+// Bozuk Türkçe karakter onarımı: UTF-8 metin yanlışlıkla Latin-1/Windows-1252 diye okunduğunda
+// "günü" → "gÃ¼nÃ¼", "buluşacağız" → "buluÅŸacaÄŸÄ±z" olur. Bu kalıpları bulup geri çeviririz.
+const CP1252 = { 0x20ac: 0x80, 0x201a: 0x82, 0x0192: 0x83, 0x201e: 0x84, 0x2026: 0x85, 0x2020: 0x86, 0x2021: 0x87, 0x02c6: 0x88,
+  0x2030: 0x89, 0x0160: 0x8a, 0x2039: 0x8b, 0x0152: 0x8c, 0x017d: 0x8e, 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93, 0x201d: 0x94,
+  0x2022: 0x95, 0x2013: 0x96, 0x2014: 0x97, 0x02dc: 0x98, 0x2122: 0x99, 0x0161: 0x9a, 0x203a: 0x9b, 0x0153: 0x9c, 0x017e: 0x9e, 0x0178: 0x9f };
+const MOJI_RE = /[Â-ô](?:[\u0080-¿ŒœŠšŸŽžƒˆ˜–—‘-„†-•…‰‹›€™]| )+/g;
+const strictUtf8 = new TextDecoder('utf-8', { fatal: true });
+function fixMojibake(s) {
+  if (!s || !/[Â-ô]/.test(s)) return s;
+  return s.replace(MOJI_RE, run => {
+    const bytes = [];
+    for (const ch of run) {
+      const c = ch.codePointAt(0);
+      if (c < 0x100) bytes.push(c); else if (CP1252[c]) bytes.push(CP1252[c]); else return run;
+    }
+    try { return strictUtf8.decode(new Uint8Array(bytes)); } catch { return run; }
+  });
+}
+
 function decodeText(data, charset) {
   const bytes = b64urlToBytes(data);
-  try { return new TextDecoder((charset || 'utf-8').toLowerCase()).decode(bytes); }
-  catch { return new TextDecoder('utf-8').decode(bytes); }
+  const cs = (charset || 'utf-8').toLowerCase();
+  // Başlık "latin1/windows-125x" dese bile içerik aslında UTF-8 ise UTF-8 olarak oku
+  if (!/^utf-?8$/.test(cs)) {
+    try { const u = strictUtf8.decode(bytes); if (/[^\x00-\x7f]/.test(u)) return fixMojibake(u); } catch {}
+  }
+  let out;
+  try { out = new TextDecoder(cs).decode(bytes); }
+  catch { out = new TextDecoder('utf-8').decode(bytes); }
+  return fixMojibake(out);
 }
 
 // =?UTF-8?B?...?= gibi kodlanmış başlıkları çözer (Gmail çoğunlukla zaten çözülmüş verir)
@@ -124,8 +150,18 @@ function avatarColor(s) {
   for (const c of s || '') h = (h * 31 + c.charCodeAt(0)) % 360;
   return `hsl(${h} 45% 42%)`;
 }
+/* Telefon numaraları: +90 542 341 64 04, 0212 232 01 37, (0216) 555 12 34, 05423416404 … */
+const PHONE_RE = /(?<![\d+\w])(?:(?:\+|00)\s?90[\s.-]?|0[\s.-]?)?\(?([2-58]\d{2})\)?[\s.-]?(\d{3})[\s.-]?(\d{2})[\s.-]?(\d{2})(?![\d\w])/g;
+function phoneE164(s) {
+  const m = new RegExp(PHONE_RE.source).exec(s);
+  return m ? '+90' + m[1] + m[2] + m[3] + m[4] : null;
+}
+const fmtPhone = e => e.replace(/^\+90(\d{3})(\d{3})(\d{2})(\d{2})$/, '+90 $1 $2 $3 $4');
+
 function linkify(text) {
-  return esc(text).replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)\]'"])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  return esc(text)
+    .replace(/(https?:\/\/[^\s<]+[^\s<.,;:!?)\]'"])/g, '<a href="$1" target="_blank" rel="noopener">$1</a>')
+    .replace(PHONE_RE, m => { const e = phoneE164(m); return e ? `<a href="tel:${e}">${m}</a>` : m; });
 }
 function htmlToText(html) {
   const d = new DOMParser().parseFromString(html, 'text/html');
@@ -167,6 +203,7 @@ const IC = {
   pen: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
   wand: svg('<path d="m4 20 11-11M14 4v3M19 9h-3M17.5 5.5 16 7M9 3.5v1.5M20 14v1.5M5.5 7H7"/>'),
   logout: svg('<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/>'),
+  gear: svg('<path d="M10.3 3.6a1.7 1.7 0 0 1 3.4 0l.2.9a1.7 1.7 0 0 0 2.4 1l.8-.4a1.7 1.7 0 0 1 2.4 2.4l-.4.8a1.7 1.7 0 0 0 1 2.4l.9.2a1.7 1.7 0 0 1 0 3.4l-.9.2a1.7 1.7 0 0 0-1 2.4l.4.8a1.7 1.7 0 0 1-2.4 2.4l-.8-.4a1.7 1.7 0 0 0-2.4 1l-.2.9a1.7 1.7 0 0 1-3.4 0l-.2-.9a1.7 1.7 0 0 0-2.4-1l-.8.4a1.7 1.7 0 0 1-2.4-2.4l.4-.8a1.7 1.7 0 0 0-1-2.4l-.9-.2a1.7 1.7 0 0 1 0-3.4l.9-.2a1.7 1.7 0 0 0 1-2.4l-.4-.8a1.7 1.7 0 0 1 2.4-2.4l.8.4a1.7 1.7 0 0 0 2.4-1z"/><circle cx="12" cy="12" r="3"/>'),
   clip: svg('<path d="m20 11-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"/>'),
   caret: svg('<path d="m9 6 6 6-6 6"/>', 'class="caret-ic"'),
   check: svg('<path d="m5 12 5 5L20 7"/>'),
@@ -308,7 +345,7 @@ async function call(path, { method = 'GET', body, query } = {}) {
 
 const hdr = (msg, name) => {
   const h = (msg.payload?.headers || []).find(x => x.name.toLowerCase() === name.toLowerCase());
-  return h ? decodeMimeWords(h.value) : '';
+  return h ? fixMojibake(decodeMimeWords(h.value)) : '';
 };
 
 function summarizeThread(t) {
@@ -319,7 +356,7 @@ function summarizeThread(t) {
   const to = parseAddress(hdr(last, 'To'));
   return {
     id: t.id, from: f.name, fromEmail: f.email, to: to.name,
-    subject: hdr(first, 'Subject'), snippet: decodeEntities(last.snippet || ''),
+    subject: hdr(first, 'Subject'), snippet: fixMojibake(decodeEntities(last.snippet || '')),
     date: +last.internalDate || 0, count: msgs.length, labelIds,
     unread: labelIds.includes('UNREAD'), starred: labelIds.includes('STARRED')
   };
@@ -359,7 +396,7 @@ function parseMessage(m) {
     to: hdr(m, 'To'), cc: hdr(m, 'Cc'), replyTo: hdr(m, 'Reply-To'),
     subject: hdr(m, 'Subject'), date: +m.internalDate || 0,
     messageId: hdr(m, 'Message-ID') || hdr(m, 'Message-Id'), references: hdr(m, 'References'),
-    snippet: decodeEntities(m.snippet || ''),
+    snippet: fixMojibake(decodeEntities(m.snippet || '')),
     noteUuid: hdr(m, 'X-Universally-Unique-Identifier'), noteCreated: hdr(m, 'X-Mail-Created-Date'),
     ...out
   };
@@ -576,13 +613,10 @@ function renderSidebar() {
     <nav>
       ${sysHtml}
       <div class="nav-sep sep-toggle ${labelsHidden ? 'closed' : ''}" data-action="toggle-labels" title="${labelsHidden ? 'Etiketleri göster' : 'Etiketleri gizle'}">
-        <span>Etiketler</span>${labelsHidden && hiddenUnread ? `<span class="count">${hiddenUnread}</span>` : ''}${IC.caret}</div>
+        <span>Etiketler</span>${labelsHidden && hiddenUnread ? `<span class="count">${hiddenUnread}</span>` : ''}<button class="sep-btn ${S.view === 'auto' ? 'on' : ''}" data-action="auto" title="Otomatik etiketleme">${IC.wand}</button>${IC.caret}</div>
       ${labelsHidden ? '' : (renderNode('', 0) || '<div class="nav-empty">Etiket yok</div>')}
-      <div class="nav-sep"></div>
-      <div class="nav-item tool ${S.view === 'auto' ? 'active' : ''}" data-action="auto" style="--d:0"><span class="caret-sp"></span>${IC.wand}<span class="nav-name">Otomatik etiketleme</span></div>
-      <div class="nav-item tool" data-action="logout" style="--d:0" title="${esc(S.email)} hesabından çıkış yap"><span class="caret-sp"></span>${IC.logout}<span class="nav-name">Çıkış yap</span></div>
     </nav>
-    <div class="acct-foot"><span class="ver">${APP_VERSION}</span><button class="ver-btn" data-action="changelog" title="Güncelleme notları">${IC.spark}</button></div>`;
+    <div class="acct-foot"><span class="ver">${APP_VERSION}</span><button class="ver-btn" data-action="changelog" title="Güncelleme notları">${IC.spark}</button><button class="ver-btn gear-btn" data-action="settings" title="Ayarlar">${IC.gear}</button></div>`;
 }
 const caretBtn = (key, collapsed) => `<span class="caret ${collapsed ? '' : 'open'}" data-action="toggle-node" data-key="${esc(key)}">${IC.caret}</span>`;
 function navItem({ id, html, name, count, depth, caret, collapsed, key }) {
@@ -881,10 +915,59 @@ function prepareHtml(html) {
     const ss = img.getAttribute('srcset');
     if (ss) img.setAttribute('srcset', ss.replace(/http:\/\//gi, 'https://'));
   });
+  // Gönderenin imzasında link numaranın sadece bir kısmını kapsıyorsa ("+90 542" linkli, "341 64 04" düz yazı) birleştir
+  d.querySelectorAll('a[href^="tel:" i]').forEach(a => {
+    let nx = a.nextSibling, extra = '';
+    while (nx && nx.nodeType === 3) {
+      const m = nx.nodeValue.match(/^[\s\d().-]+/);
+      if (!m) break;
+      extra += m[0];
+      nx.nodeValue = nx.nodeValue.slice(m[0].length);
+      if (nx.nodeValue) break;
+      nx = nx.nextSibling;
+    }
+    if (extra.trim()) a.append(extra.replace(/\s+$/, '')), a.after(extra.match(/\s+$/)?.[0] || '');
+    const e = phoneE164(a.textContent) || phoneE164(decodeURIComponent(a.getAttribute('href').slice(4)));
+    if (e) a.setAttribute('href', 'tel:' + e);
+  });
+  // Link olmayan telefon numaralarını tıklanabilir yap
+  const walker = d.createTreeWalker(d.body, NodeFilter.SHOW_TEXT);
+  const texts = [];
+  while (walker.nextNode()) texts.push(walker.currentNode);
+  texts.forEach(t => {
+    if (t.parentElement?.closest('a,script,style,textarea')) return;
+    const v = t.nodeValue;
+    PHONE_RE.lastIndex = 0;
+    if (!PHONE_RE.test(v)) return;
+    PHONE_RE.lastIndex = 0;
+    const frag = d.createDocumentFragment();
+    let last = 0, m;
+    while ((m = PHONE_RE.exec(v))) {
+      const e = phoneE164(m[0]);
+      if (!e) continue;
+      frag.append(v.slice(last, m.index));
+      const a = d.createElement('a'); a.href = 'tel:' + e; a.textContent = m[0]; frag.append(a);
+      last = m.index + m[0].length;
+    }
+    frag.append(v.slice(last));
+    t.replaceWith(frag);
+  });
   d.querySelectorAll('[background]').forEach(el => {
     el.setAttribute('background', el.getAttribute('background').replace(/^http:\/\//i, 'https://'));
   });
   return d.body.innerHTML.replace(/url\((['"]?)http:\/\//gi, 'url($1https://');
+}
+
+// Telefon numarasına tıklayınca: Ara / Kopyala / WhatsApp
+function phoneMenu(num) {
+  const e = phoneE164(num) || num.replace(/[^\d+]/g, '');
+  const shown = fmtPhone(e);
+  const mobile = /^\+905/.test(e);
+  toast(`<b>${esc(shown)}</b>`, [
+    ['Ara', () => { location.href = 'tel:' + e; }],
+    ['Kopyala', async () => { try { await navigator.clipboard.writeText(shown); toast('Numara kopyalandı'); } catch { toast(shown); } }],
+    ...(mobile ? [['WhatsApp', () => window.open('https://wa.me/' + e.slice(1), '_blank', 'noopener')]] : [])
+  ], 10000);
 }
 
 // https ile açılmayan eski sunuculardaki resimler için yedek yol
@@ -915,6 +998,12 @@ function renderBody(container, m) {
     wired = true;
     fit();
     try { new ResizeObserver(fit).observe(doc.body); } catch {}
+    doc.addEventListener('click', ev => {
+      const a = ev.target.closest?.('a[href^="tel:" i]');
+      if (!a) return;
+      ev.preventDefault();
+      phoneMenu(a.getAttribute('href').slice(4));
+    });
     doc.querySelectorAll('img').forEach(img => {
       img.addEventListener('load', fit);
       img.addEventListener('error', () => retryImg(img));
@@ -1211,15 +1300,18 @@ function renderAutoIntro() {
   const mine = (S.filters || []).filter(f => (f.action?.addLabelIds || []).some(id => S.labelById[id]?.type === 'user'));
   const blocked = (S.filters || []).filter(f => (f.action?.addLabelIds || []).includes('TRASH'));
   const notSkipping = mine.filter(f => !(f.action?.removeLabelIds || []).includes('INBOX')).length;
+  // Bölüm başlıkları tıklanınca açılıp kapanır (tercih hatırlanır)
+  const hideRules = !!S.collapsed.__rules, hideBlocked = !!S.collapsed.__blocked;
+  const secHead = (key, title, hidden) => `<h4 class="sec sec-fold ${hidden ? 'closed' : ''}" data-action="toggle-sec" data-k="${key}" title="${hidden ? 'Göster' : 'Gizle'}"><span>${title}</span>${IC.caret}</h4>`;
   $('#autoBody').innerHTML = `
     <div class="card hero">
       <h3>Etiketlerinden öğren</h3>
       <p>Her etiketin altındaki son mailler taranır, göndericiler incelenir ve senin için Gmail filtresi önerilir. Onayladığın kurallar Gmail'in içinde çalışır; uygulama kapalıyken bile yeni mailler otomatik etiketlenir.</p>
       <button class="btn primary" data-action="scan">${IC.wand} Taramayı başlat</button>
     </div>
-    <div class="sec-row"><h4 class="sec">Mevcut kurallar (${mine.length})</h4>
-      ${notSkipping ? `<button class="btn" data-action="redirect-all">Tümü doğrudan etiketine gitsin (${notSkipping})</button>` : ''}</div>
-    ${mine.length ? mine.map(f => {
+    <div class="sec-row">${secHead('__rules', `Mevcut kurallar (${mine.length})`, hideRules)}
+      ${notSkipping && !hideRules ? `<button class="btn" data-action="redirect-all">Tümü doğrudan etiketine gitsin (${notSkipping})</button>` : ''}</div>
+    ${hideRules ? '' : mine.length ? mine.map(f => {
       const d = describeFilter(f);
       return `<div class="rule">
         <div class="rule-main">${d.labels.map(l => tagChip(l, shortName(l))).join('')}
@@ -1227,8 +1319,8 @@ function renderAutoIntro() {
         ${d.skip ? '' : `<button class="btn sm" data-action="redirect-filter" data-id="${f.id}">Etiketine yönlendir</button>`}
         <button class="icon-btn" data-action="del-filter" data-id="${f.id}" title="Kuralı sil">${IC.trash}</button></div>`;
     }).join('') : '<p class="muted">Henüz otomatik kural yok.</p>'}
-    <h4 class="sec">Engellenen göndericiler (${blocked.length})</h4>
-    ${blocked.length ? blocked.map(f => `<div class="rule">
+    ${secHead('__blocked', `Engellenen göndericiler (${blocked.length})`, hideBlocked)}
+    ${hideBlocked ? '' : blocked.length ? blocked.map(f => `<div class="rule">
         <div class="rule-main">${IC.block}<span class="rule-cond">${esc(f.criteria?.from || describeFilter(f).cond)}</span><span class="tag-skip">Doğrudan çöpe gider</span></div>
         <button class="btn" data-action="del-filter" data-id="${f.id}">Engeli kaldır</button></div>`).join('')
       : '<p class="muted">Engellenen gönderici yok. Bir maili açıp üstteki ⊘ düğmesiyle engelleyebilirsin.</p>'}`;
@@ -1427,6 +1519,7 @@ const ACTIONS = {
     if (S.view === 'cal') { setView('list'); renderSidebar(); }
     renderSidebar(); loadList();
   },
+  'toggle-sec': el => { const k = el.dataset.k; S.collapsed[k] = !S.collapsed[k]; store.set('collapsed', S.collapsed); renderAutoIntro(); },
   'toggle-labels': () => { S.collapsed.__labels = !S.collapsed.__labels; store.set('collapsed', S.collapsed); renderSidebar(); },
   'toggle-more': () => { S.collapsed.__more = S.collapsed.__more === false; store.set('collapsed', S.collapsed); renderSidebar(); },
   'color-label': (el, e) => { e.stopPropagation(); openColorPicker(el.dataset.id, el.closest('.nav-item')); },
@@ -1644,6 +1737,8 @@ async function dropOnto(threadId, target) {
 }
 
 document.addEventListener('click', e => {
+  const tel = e.target.closest?.('.plain a[href^="tel:"], .note-body a[href^="tel:"]');
+  if (tel) { e.preventDefault(); phoneMenu(tel.getAttribute('href').slice(4)); return; }
   const el = e.target.closest('[data-action]');
   if (!el) return;
   const fn = ACTIONS[el.dataset.action];

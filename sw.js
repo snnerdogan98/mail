@@ -1,6 +1,6 @@
 // Uygulama dosyalarını önbelleğe alır; Gmail verilerine dokunmaz.
-const VERSION = 'mail-v17';
-const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'cal.js', 'notes.js', 'mock.js', 'config.js',
+const VERSION = 'mail-v25';
+const SHELL = ['./', 'index.html', 'style.css', 'cam.css', 'koyu.css', 'settings.js', 'app.js', 'cal.js', 'notes.js', 'mock.js', 'config.js',
   'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'icon-maskable.png'];
 
 self.addEventListener('install', e => {

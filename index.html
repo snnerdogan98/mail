@@ -13,6 +13,18 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Mail">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="cam.css" id="css-cam">
+<link rel="stylesheet" href="koyu.css" id="css-koyu" media="not all">
+<script>
+// Görünümü sayfa çizilmeden önce uygula (açılışta renk sıçraması olmasın)
+function applyTheme(t) {
+  var cam = document.getElementById('css-cam'), koyu = document.getElementById('css-koyu');
+  cam.media = t === 'flat' ? 'not all' : 'all';
+  koyu.media = t === 'dark' ? 'all' : t === 'auto' ? '(prefers-color-scheme: dark)' : 'not all';
+  document.documentElement.dataset.theme = t;
+}
+try { applyTheme(JSON.parse(localStorage.getItem('theme')) || 'light'); } catch (e) { applyTheme('light'); }
+</script>
 </head>
 <body>
 <div id="app"></div>
@@ -23,5 +35,6 @@
 <script src="app.js"></script>
 <script src="cal.js"></script>
 <script src="notes.js"></script>
+<script src="settings.js"></script>
 </body>
 </html>

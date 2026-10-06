@@ -3,6 +3,15 @@
 'use strict';
 
 const CHANGELOG = [
+  { v: 'V0.2', date: '6 Ekim 2026', items: [
+    ['Türkçe karakterler', 'Bazı maillerde "gÃ¼nÃ¼", "buluÅŸacaÄŸÄ±z" gibi bozuk görünen Türkçe harfler düzeltildi.'],
+    ['Telefon numaraları', 'Maillerdeki telefon numaraları tıklanabilir; tıklayınca Ara, Kopyala ve (cep numaralarında) WhatsApp seçenekleri çıkar. İmzada numaranın sadece bir kısmı link olsa bile tam numara alınır.'],
+    ['iPhone', 'Ana ekrandan açınca altta kalan beyaz boşluk giderildi.'],
+    ['Cam görünüm', 'Paneller buzlu cam gibi; gümüş-gri renkler ve grafit menü aynen korunuyor.'],
+    ['Ayarlar', 'Sol alttaki çark simgesinden açılan Ayarlar: görünüm seçimi (Açık cam, Koyu cam, Otomatik, Düz), etiket ve klasör görünürlüğü, etiket renklerini sıfırlama, takvimin açılış görünümü, çıkış ve tek tıkla "Yenile ve güncelle".'],
+    ['Otomatik etiketleme', 'Artık Etiketler başlığının sağındaki değnek simgesinden açılıyor. Mevcut kurallar ve engellenen göndericiler listeleri başlığa tıklayarak gizlenip gösterilebiliyor.'],
+    ['Koyu cam', 'Gece zeminli, füme cam panelli koyu görünüm. Otomatik seçilirse cihazın koyu moduna göre kendiliğinden değişir.']
+  ]},
   { v: 'V0.1', date: '5–6 Ekim 2026', items: [
     ['Gmail bağlantısı', 'Etiketler, mail okuma, yanıtlama, iletme, arama ve ekler.'],
     ['Otomatik etiketleme', 'Etiketlerinden kural önerir; yeni mailler gelen kutusuna uğramadan doğrudan etiketine gider.'],
