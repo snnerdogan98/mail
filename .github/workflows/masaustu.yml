@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: 20
       - run: npm install
-            - name: Google masaüstü kimliği
+      - name: Google masaüstü kimliği
         shell: bash
         env:
           CID: ${{ secrets.DESKTOP_CLIENT_ID }}
