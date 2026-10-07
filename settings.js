@@ -84,8 +84,7 @@ function openSettings() {
         </section>
         <section>
           <h4>Uygulama</h4>
-          <div class="set-row"><div><b>Sürüm ${APP_VERSION}</b><span>Yenilikleri ve düzeltmeleri gör</span></div>
-            <button class="btn" data-action="changelog">${IC.spark}Güncelleme notları</button></div>
+          <div class="set-row"><div><b>Sürüm ${APP_VERSION}</b><span>Mail · kişisel Gmail istemcisi</span></div></div>
           <div class="set-row"><div><b>Yenile ve güncelle</b><span>Eski sürüm görünüyorsa önbelleği temizler; giriş ve ayarların kalır</span></div>
             <button class="btn" data-action="set-hard-reload">${IC.refresh}Yenile</button></div>
         </section>

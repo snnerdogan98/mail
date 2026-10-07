@@ -1,6 +1,6 @@
 // Uygulama dosyalarını önbelleğe alır; Gmail verilerine dokunmaz.
-const VERSION = 'mail-v46';
-const SHELL = ['./', 'index.html', 'style.css', 'cam.css', 'koyu.css', 'settings.js', 'autocorrect.js', 'schedule.js', 'signature.js', 'snooze.js', 'undosend.js', 'phish.js', 'access.js', 'notify.js', 'select.js', 'keys.js', 'app.js', 'cal.js', 'notes.js', 'mock.js', 'config.js',
+const VERSION = 'mail-v47';
+const SHELL = ['./', 'index.html', 'style.css', 'cam.css', 'koyu.css', 'settings.js', 'autocorrect.js', 'schedule.js', 'signature.js', 'snooze.js', 'undosend.js', 'phish.js', 'access.js', 'notify.js', 'select.js', 'keys.js', 'app.js', 'cal.js', 'mock.js', 'config.js',
   'manifest.webmanifest', 'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'icon-maskable.png',
   'yonetici.html', 'yonetici.js', 'yonetici.webmanifest', 'yonetici-192.png', 'yonetici-512.png', 'yonetici-apple.png', 'yonetici-maskable.png'];
 

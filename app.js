@@ -644,7 +644,7 @@ function renderSidebar() {
         <span>Etiketler</span>${labelsHidden && hiddenUnread ? `<span class="count">${hiddenUnread}</span>` : ''}<button class="sep-btn ${S.view === 'auto' ? 'on' : ''}" data-action="auto" title="Otomatik etiketleme">${IC.wand}</button>${IC.caret}</div>
       ${labelsHidden ? '' : (renderNode('', 0) || '<div class="nav-empty">Etiket yok</div>')}
     </nav>
-    <div class="acct-foot"><span class="ver">${APP_VERSION}</span><button class="ver-btn" data-action="changelog" title="Güncelleme notları">${IC.spark}</button><button class="ver-btn gear-btn" data-action="settings" title="Ayarlar">${IC.gear}</button></div>`;
+    <div class="acct-foot"><span class="ver">${APP_VERSION}</span><button class="ver-btn gear-btn" data-action="settings" title="Ayarlar">${IC.gear}</button></div>`;
 }
 const caretBtn = (key, collapsed) => `<span class="caret ${collapsed ? '' : 'open'}" data-action="toggle-node" data-key="${esc(key)}">${IC.caret}</span>`;
 function navItem({ id, html, name, count, depth, caret, collapsed, key }) {
@@ -1879,7 +1879,6 @@ async function start() {
     store.set('email', p.email);
     setLabels(labels);
     renderSidebar();
-    if (typeof maybeShowWhatsNew === 'function') maybeShowWhatsNew();
     if (typeof schedStart === 'function') schedStart();
     if (typeof loadSignature === 'function') loadSignature();
     if (typeof snStart === 'function') snStart();
