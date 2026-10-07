@@ -8,6 +8,7 @@ const THEMES = [
 ];
 
 function openSettings() {
+  if (typeof SIG !== 'undefined' && !SIG.loaded && !SIG.trying) { SIG.trying = true; loadSignature().then(() => { if ($('.sheet.settings')) openSettings(); }); }
   $('#shell')?.classList.remove('drawer');
   const theme = store.get('theme', 'light');
   const labelsShown = !S.collapsed.__labels;
@@ -34,6 +35,17 @@ function openSettings() {
               </button>`).join('')}
           </div>
         </section>
+        ${typeof notifySection === 'function' ? notifySection() : ''}
+        ${typeof undoSendRow === 'function' ? `<section><h4>Gönderme</h4>${undoSendRow()}</section>` : ''}
+        ${typeof keysRow === 'function' ? `<section><h4>Klavye</h4>${keysRow()}</section>` : ''}
+        ${typeof signatureSection === 'function' ? signatureSection() : ''}
+        <section>
+          <h4>Gizlilik</h4>
+          <div class="set-row"><div><b>Takip piksellerini engelle</b><span>Pazarlama mailleri, maili açtığını ve nereden açtığını gizlice öğrenemez.${store.get('trkCount', 0) ? ` Bugüne kadar <b>${store.get('trkCount', 0)}</b> takip pikseli engellendi.` : ''}</span></div>${sw('blockTrackers', store.get('blockTrackers', true) !== false)}</div>
+          <div class="set-row"><div><b>Sahte mail uyarısı</b><span>Banka, kurum ya da mağaza adıyla gelip adresi o kuruma ait olmayan, doğrulanamayan ya da aldatıcı link içeren maillerde kırmızı uyarı.${store.get('safeSenders', []).length ? ` Güvenli saydıkların: ${esc(store.get('safeSenders', []).join(', '))}` : ''}</span></div>
+            ${store.get('safeSenders', []).length ? '<button class="btn" data-action="phish-reset">Güvenli listesini temizle</button>' : ''}</div>
+          <div class="set-row"><div><b>Resimleri gizli yükle</b><span>Maildeki resimler aracı bir sunucu (images.weserv.nl) üzerinden gelir; gönderen IP adresini ve konumunu göremez. Resimler biraz yavaş açılabilir.</span></div>${sw('imgProxyAll', store.get('imgProxyAll', false) === true)}</div>
+        </section>
         <section>
           <h4>Kenar çubuğu</h4>
           <div class="set-row"><div><b>Etiketleri göster</b><span>Kapalıyken toplam okunmamış sayısı görünür</span></div>${sw('labels', labelsShown)}</div>
@@ -50,8 +62,10 @@ function openSettings() {
         </section>
         <section>
           <h4>Zamanlanmış gönderim</h4>
-          <div class="set-row"><div><b>Google zamanlayıcısı</b><span>${store.get('schedScript') ? 'Kurulu: zamanlanmış postalar cihazların kapalıyken de tam saatinde gider' : 'Kurulu değil: zamanlanmış postalar sadece uygulama açıkken gider'}</span></div>
-            <button class="btn" data-action="sched-setup">${IC.clock}${store.get('schedScript') ? 'Kurulum' : 'Kur'}</button></div>
+          <div class="set-row"><div><b>Google zamanlayıcısı</b><span>${!store.get('schedScript') ? 'Kurulu değil: zamanlanmış postalar ve ertelenen mailler sadece uygulama açıkken işlenir'
+              : store.get('schedScriptVer', 1) < SCHED_SCRIPT_VER ? '<b class="upd">Yeni sürüm var.</b> Erteleme ve gizlilik için zamanlayıcı kodunu güncelle.'
+              : 'Kurulu ve güncel: cihazların kapalıyken de çalışır'}</span></div>
+            <button class="btn" data-action="sched-setup">${IC.clock}${!store.get('schedScript') ? 'Kur' : store.get('schedScriptVer', 1) < SCHED_SCRIPT_VER ? 'Güncelle' : 'Kurulum'}</button></div>
         </section>
         <section>
           <h4>Otomatik etiketleme</h4>
@@ -61,7 +75,7 @@ function openSettings() {
         <section>
           <h4>Takvim</h4>
           <div class="set-row"><div><b>Açılış görünümü</b><span>Takvim açıldığında</span></div>
-            <div class="seg">${[['month', 'Ay'], ['week', 'Hafta']].map(([m, t]) => `<button class="${calMode === m ? 'on' : ''}" data-action="set-calmode" data-m="${m}">${t}</button>`).join('')}</div></div>
+            <div class="seg">${[['month', 'Ay'], ['week', 'Hafta'], ['agenda', 'Ajanda']].map(([m, t]) => `<button class="${calMode === m ? 'on' : ''}" data-action="set-calmode" data-m="${m}">${t}</button>`).join('')}</div></div>
         </section>
         <section>
           <h4>Hesap</h4>
@@ -101,6 +115,9 @@ Object.assign(ACTIONS, {
     if (el.dataset.k === 'labels') S.collapsed.__labels = !S.collapsed.__labels;
     if (el.dataset.k === 'more') S.collapsed.__more = S.collapsed.__more === false;
     if (el.dataset.k === 'acSentence' || el.dataset.k === 'acNames') { store.set(el.dataset.k, !acOn(el.dataset.k)); return openSettings(); }
+    if (el.dataset.k === 'sigNew' || el.dataset.k === 'sigReply') { store.set(el.dataset.k, !sigOn(el.dataset.k)); return openSettings(); }
+    if (el.dataset.k === 'blockTrackers') { store.set('blockTrackers', store.get('blockTrackers', true) === false); if (S.thread && S.view === 'thread') renderThread(); return openSettings(); }
+    if (el.dataset.k === 'imgProxyAll') { store.set('imgProxyAll', !store.get('imgProxyAll', false)); if (S.thread && S.view === 'thread') renderThread(); return openSettings(); }
     store.set('collapsed', S.collapsed);
     renderSidebar(); openSettings();
   },

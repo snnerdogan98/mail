@@ -4,7 +4,7 @@
  */
 'use strict';
 
-const APP_VERSION = 'V0.3';
+const APP_VERSION = 'V0.5';
 const CLIENT_ID = (window.MAIL_CONFIG && window.MAIL_CONFIG.CLIENT_ID || '').trim();
 const DEMO = new URLSearchParams(location.search).has('demo');
 const SCOPES = [
@@ -207,6 +207,8 @@ const IC = {
   clip: svg('<path d="m20 11-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"/>'),
   caret: svg('<path d="m9 6 6 6-6 6"/>', 'class="caret-ic"'),
   check: svg('<path d="m5 12 5 5L20 7"/>'),
+  alarm: svg('<circle cx="12" cy="13" r="7.5"/><path d="M12 9.5V13l2.5 1.5M4 5.5 7 3M20 5.5 17 3"/>'),
+  shield: svg('<path d="M12 3 5 6v5c0 4.4 3 8.4 7 10 4-1.6 7-5.6 7-10V6z"/><path d="m9 12 2 2 4-4"/>'),
 };
 // Etiket rozeti: zemin etiketin rengi, yazı rengi zemine göre otomatik (koyu zeminde beyaz, açıkta siyah)
 function inkFor(hex) {
@@ -379,7 +381,7 @@ function summarizeThread(t) {
   return {
     id: t.id, from: f.name, fromEmail: f.email, to: to.name,
     subject: hdr(first, 'Subject'), snippet: fixMojibake(decodeEntities(last.snippet || '')),
-    date: +last.internalDate || 0, count: msgs.length, labelIds,
+    date: +last.internalDate || 0, count: msgs.length, labelIds, authResults: hdr(last, 'Authentication-Results'),
     unread: labelIds.includes('UNREAD'), starred: labelIds.includes('STARRED')
   };
 }
@@ -415,7 +417,7 @@ function parseMessage(m) {
   const f = parseAddress(hdr(m, 'From'));
   return {
     id: m.id, labelIds: m.labelIds || [], from: f.name, fromEmail: f.email,
-    to: hdr(m, 'To'), cc: hdr(m, 'Cc'), replyTo: hdr(m, 'Reply-To'),
+    to: hdr(m, 'To'), cc: hdr(m, 'Cc'), replyTo: hdr(m, 'Reply-To'), authResults: hdr(m, 'Authentication-Results'),
     subject: hdr(m, 'Subject'), date: +m.internalDate || 0,
     messageId: hdr(m, 'Message-ID') || hdr(m, 'Message-Id'), references: hdr(m, 'References'),
     snippet: fixMojibake(decodeEntities(m.snippet || '')),
@@ -447,7 +449,7 @@ const RealGmail = {
   },
   async listThreads({ labelId, q, pageToken }) {
     const r = await call('threads', { query: { maxResults: 25, labelIds: labelId && labelId !== 'ALL' ? labelId : null, q, pageToken } });
-    const ts = await pmap(r.threads || [], 6, t => call('threads/' + t.id, { query: { format: 'metadata', metadataHeaders: ['From', 'To', 'Subject'] } }));
+    const ts = await pmap(r.threads || [], 6, t => call('threads/' + t.id, { query: { format: 'metadata', metadataHeaders: ['From', 'To', 'Subject', 'Authentication-Results'] } }));
     return { threads: ts.map(summarizeThread), next: r.nextPageToken || null };
   },
   async getThread(id) {
@@ -529,7 +531,7 @@ function noteTitle(t) {
   if (s) return s;
   return (t.snippet || '').split(/[.\n]/)[0].slice(0, 60) || 'Başlıksız not';
 }
-const userLabels = () => S.labels.filter(l => l.type === 'user').sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+const userLabels = () => S.labels.filter(l => l.type === 'user' && !(typeof isSnLabel === 'function' && isSnLabel(l))).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
 const shortName = l => l.short || l.name;
 
 /* ───────────── Ekranlar ───────────── */
@@ -609,7 +611,8 @@ function renderSidebar() {
     if (id !== 'SENT') return item;
     return item + (notes ? navItem({ id: notes.id, html: IC.note, name: 'Notlar', count: notes.unread, depth: 0 }) : '')
       + `<div class="nav-item ${S.view === 'cal' ? 'active' : ''}" data-action="open-cal" style="--d:0"><span class="caret-sp"></span>${IC.cal}<span class="nav-name">Takvim</span></div>`
-      + (S.scheduled?.length ? `<div class="nav-item ${S.view === 'sched' ? 'active' : ''}" data-action="open-sched" style="--d:0"><span class="caret-sp"></span>${IC.clock}<span class="nav-name">Zamanlanmış</span><span class="count">${S.scheduled.length}</span></div>` : '');
+      + (S.scheduled?.length ? `<div class="nav-item ${S.view === 'sched' ? 'active' : ''}" data-action="open-sched" style="--d:0"><span class="caret-sp"></span>${IC.clock}<span class="nav-name">Zamanlanmış</span><span class="count">${S.scheduled.length}</span></div>` : '')
+      + (() => { const r = S.labels.find(l => l.type === 'user' && l.name === 'Ertelendi'); return r && r.total ? navItem({ id: r.id, html: IC.alarm, name: 'Ertelenenler', count: r.total, depth: 0 }) : ''; })();
   }).join('') + `<div class="nav-item tool more-toggle" data-action="toggle-more" style="--d:0"><span class="caret-sp"></span><span class="nav-name">${showMore ? 'Daha az' : 'Daha fazla'}</span></div>`;
 
   // Etiket ağacı: "Garanti/Annem Garanti" → Garanti'nin altında.
@@ -659,6 +662,7 @@ function listTitle() {
   if (sys) return sys[1];
   const l = S.labelById[S.labelId];
   if (l && l === notesLabel()) return 'Notlar';
+  if (l && l.name === 'Ertelendi') return 'Ertelenenler';
   return l ? shortName(l) : 'Posta';
 }
 
@@ -674,9 +678,11 @@ async function loadList(more) {
     const r = await Gmail.listThreads({ labelId: S.q && !inNotes() ? null : S.labelId, q: S.q, pageToken: more ? S.next : null });
     S.threads = S.threads.concat(r.threads);
     S.next = r.next;
+    if (typeof snSortList === 'function') snSortList();
   } catch (e) { if (!(e instanceof AuthError)) toast('Postalar yüklenemedi: ' + e.message); }
   S.loading = false;
   renderList();
+  if (!more && typeof snPinBack === 'function') snPinBack();
 }
 
 function renderList(loading) {
@@ -692,13 +698,15 @@ function renderList(loading) {
       <div class="note-title">${esc(noteTitle(t))}</div>
       <div class="note-meta"><span>${fmtDate(t.date)}</span><span class="note-prev">${esc(t.snippet.replace(noteTitle(t), '').trim())}</span></div>
     </div>`).join('') : S.threads.map(t => {
-    const chips = t.labelIds.map(id => S.labelById[id]).filter(l => l && l.type === 'user' && l.id !== S.labelId)
+    const chips = (typeof snChip === 'function' ? snChip(t) : '') + t.labelIds.map(id => S.labelById[id])
+      .filter(l => l && l.type === 'user' && l.id !== S.labelId && !(typeof isSnLabel === 'function' && isSnLabel(l)))
       .map(l => tagChip(l, l.name)).join('');
     const who = showTo ? 'Kime: ' + (t.to || '') : t.from;
     return `<div class="row ${t.unread ? 'unread' : ''} ${S.threadId === t.id ? 'sel' : ''}" data-action="open-thread" data-id="${t.id}" draggable="true">
+      <button class="row-check" data-action="sel-toggle" data-id="${t.id}" role="checkbox" aria-checked="false" aria-label="Seç" title="Seç (X)">${IC.check}</button>
       <div class="row-main">
         <div class="row-top"><span class="who">${esc(who)}${t.count > 1 ? ` <i>${t.count}</i>` : ''}</span><span class="date">${fmtDate(t.date)}</span></div>
-        <div class="subj">${t.starred ? '<span class="st">★</span>' : ''}${esc(t.subject || '(konu yok)')}</div>
+        <div class="subj">${typeof phishMark === 'function' ? phishMark(t) : ''}${t.starred ? '<span class="st">★</span>' : ''}${esc(t.subject || '(konu yok)')}</div>
         <div class="snip">${esc(t.snippet)}</div>
         ${chips ? `<div class="chips">${chips}</div>` : ''}
       </div></div>`;
@@ -729,6 +737,7 @@ async function openThread(id) {
     S.thread = t;
     S.openMsgs = new Set(t.messages.filter((m, i) => i === t.messages.length - 1 || m.labelIds.includes('UNREAD')).map(m => m.id));
     renderThread();
+    if (typeof snSeen === 'function') snSeen(id);
     if (t.labelIds.includes('UNREAD')) {
       await Gmail.modifyThread(id, [], ['UNREAD']);
       markLocal(id, [], ['UNREAD']);
@@ -743,6 +752,7 @@ function readerButtons() {
     <button class="icon-btn back" data-action="back" aria-label="Geri">${IC.back}</button>
     <button class="icon-btn" data-action="archive" title="Arşivle">${IC.archive}</button>
     <button class="icon-btn" data-action="trash" title="Sil">${IC.trash}</button>
+    <button class="icon-btn ${t && typeof snWhenOf === 'function' && snWhenOf(t) ? 'on' : ''}" data-action="snooze" title="Ertele">${IC.alarm}</button>
     <button class="icon-btn" data-action="mark-unread" title="Okunmadı yap">${IC.unread}</button>
     <button class="icon-btn ${starred ? 'on' : ''}" data-action="star" title="Yıldızla">${starred ? IC.starFill : IC.star}</button>
     <button class="icon-btn" data-action="labels" title="Etiketler">${IC.tag}</button>
@@ -888,7 +898,8 @@ function renderThread() {
   const r = $('#reader');
   const prevScroll = r.querySelector('.reader-scroll')?.scrollTop || 0;
   const msgs = t.messages;
-  const chips = t.labelIds.map(id => S.labelById[id]).filter(l => l && l.type === 'user')
+  const chips = (typeof snChip === 'function' ? snChip(t) : '') + t.labelIds.map(id => S.labelById[id])
+    .filter(l => l && l.type === 'user' && !(typeof isSnLabel === 'function' && isSnLabel(l)))
     .map(l => tagChip(l, l.name)).join('');
   r.innerHTML = `
     <div class="reader-bar">${readerButtons()}</div>
@@ -925,11 +936,53 @@ function renderThread() {
 }
 
 // Resimlerin yüklenmesini engelleyen durumları düzeltir
-function prepareHtml(html) {
+/* ───── Takip pikseli engelleme ─────
+   Pazarlama mailleri maile 1×1 boyutunda görünmez bir resim koyar; mail açılınca bu resim
+   gönderenin sunucusundan istenir ve "açıldı, şu saatte, şu IP/konumdan" bilgisi gider.
+   Bu resimleri mail gösterilmeden önce kaldırıyoruz. */
+const TRACKER_RE = new RegExp([
+  '/track(ing)?/open', '/open(ed)?\\.(gif|png|php|aspx?)', '/wf/open', '/e/o/', '/pixel(\\.gif|\\.png|/|\\?)',
+  '/beacon', '[?&](open|tracking|utm_open)=', 'list-manage\\.com/track', 'mailchimp\\.com/track', 'mandrillapp\\.com/track', 'sendgrid\\.net/wf/open', 'ct\\.sendgrid\\.net',
+  'mailgun\\.(org|net)/o/', 'sparkpost(mail)?\\.com/q/', 'hubspot(email)?\\.(com|net)/.*(open|track)', 'hs-analytics', 't\\.hubspotemail',
+  'klaviyo\\.com/(open|track)', 'trk\\.klclick', 'sendibt\\d|sendinblue|brevo\\.com/.*(open|track)', 'r\\.[a-z0-9-]+\\.(com|net)/tr/op',
+  'mailtrack\\.io', 'mailtrack\\.me', 'getnotify\\.com', 'yesware\\.com/t', 'bananatag', 'streak\\.com/.*track', 'mixmax\\.com/api/track',
+  'google-analytics\\.com/collect', 'doubleclick\\.net', 'facebook\\.com/tr', 'linkedin\\.com/.*(emimp|trk)', 'exacttarget\\.com/.*open',
+  'cmail\\d+\\.com/t/', 'createsend\\d*\\.com/t/', 'emltrk\\.com', 'awstrack\\.me/.*open', 'amazonses\\.com/.*open', 'pstmrk\\.it/open',
+  'icptrack\\.com', 'mailjet\\.com/oo/', 'mjt\\.lu/oo/', 'salesforce\\.com/.*open', 'emarsys\\.net/.*/e/', 'insider\\.(com|net)/.*open',
+  'euromsg\\.(com|net)/.*(open|track)', 'relateddigital\\.com/.*(open|track)', 'useinsider\\.com/.*open'
+].join('|'), 'i');
+const imgDim = (img, a) => { const v = img.getAttribute(a); return v == null || v === '' ? null : parseFloat(v); };
+function isTrackingImg(img, src) {
+  if (!/^https?:/i.test(src)) return false;
+  if (TRACKER_RE.test(src)) return true;
+  const w = imgDim(img, 'width'), h = imgDim(img, 'height');
+  if ((w != null && w <= 3 && (h == null || h <= 3)) || (h != null && h <= 3 && (w == null || w <= 3))) return true;
+  const st = (img.getAttribute('style') || '').replace(/\s+/g, '').toLowerCase();
+  if (/display:none|visibility:hidden|opacity:0(?![.\d])|(?:^|;)(max-)?(width|height):[0-3](px)?(;|$)/.test(st)) return true;
+  return false;
+}
+const hostOf = u => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; } };
+const proxyAll = () => store.get('imgProxyAll', false) === true;
+
+function prepareHtml(html, stats = {}) {
   const d = new DOMParser().parseFromString(html, 'text/html');
+  const block = store.get('blockTrackers', true) !== false;
+  stats.trackers = 0; stats.hosts = new Set();
   d.querySelectorAll('img').forEach(img => {
     img.removeAttribute('loading');                    // tembel yükleme çerçeve içinde hiç tetiklenmeyebiliyor
-    const src = (img.getAttribute('src') || '').trim();
+    const src0 = (img.getAttribute('src') || '').trim();
+    if (block && isTrackingImg(img, src0)) {
+      stats.trackers++; stats.hosts.add(hostOf(src0));
+      img.remove();
+      return;
+    }
+    if (proxyAll() && /^https?:\/\//i.test(src0)) {
+      img.setAttribute('data-orig', src0);
+      img.setAttribute('src', imgProxy(src0));
+      img.removeAttribute('srcset');
+      return;
+    }
+    const src = src0;
     if (/^cid:/i.test(src)) {
       img.setAttribute('data-cid', decodeURIComponent(src.slice(4)).replace(/[<>\s]/g, '').toLowerCase());
       img.setAttribute('src', 'data:image/gif;base64,R0lGODlhAQABAAAAACw=');
@@ -978,9 +1031,31 @@ function prepareHtml(html) {
     t.replaceWith(frag);
   });
   d.querySelectorAll('[background]').forEach(el => {
-    el.setAttribute('background', el.getAttribute('background').replace(/^http:\/\//i, 'https://'));
+    const b = el.getAttribute('background');
+    el.setAttribute('background', proxyAll() && /^https?:/i.test(b) ? imgProxy(b) : b.replace(/^http:\/\//i, 'https://'));
   });
-  return d.body.innerHTML.replace(/url\((['"]?)http:\/\//gi, 'url($1https://');
+  if (block) d.querySelectorAll('link[rel~="stylesheet" i][href^="http" i]').forEach(l => {
+    if (TRACKER_RE.test(l.getAttribute('href'))) { stats.trackers++; stats.hosts.add(hostOf(l.getAttribute('href'))); l.remove(); }
+  });
+  let out = d.body.innerHTML;
+  if (proxyAll()) out = out.replace(/url\((['"]?)(https?:\/\/[^'")]+)\1\)/gi, (_, q, u) => `url(${q}${imgProxy(u.replace(/&amp;/g, '&'))}${q})`);
+  return out.replace(/url\((['"]?)http:\/\//gi, 'url($1https://');
+}
+
+// Bu mailde engellenen takipçiler için küçük not; toplam sayaç ayarlarda görünür
+function trackerNote(container, m, stats) {
+  if (!stats.trackers) return;
+  const seen = store.get('trkSeen', []);
+  if (!seen.includes(m.id)) {
+    seen.push(m.id); store.set('trkSeen', seen.slice(-3000));
+    store.set('trkCount', store.get('trkCount', 0) + stats.trackers);
+  }
+  const hosts = [...stats.hosts].filter(Boolean).slice(0, 3).join(', ');
+  const n = document.createElement('div');
+  n.className = 'trk-note';
+  n.innerHTML = `${IC.shield}<span><b>${stats.trackers} takip pikseli engellendi</b>${hosts ? ` · ${esc(hosts)}` : ''}</span>`;
+  n.title = 'Gönderen, bu maili açtığını ve nereden açtığını öğrenemez';
+  container.before(n);
 }
 
 // Telefon numarasına tıklayınca: Ara / Kopyala / WhatsApp
@@ -999,11 +1074,13 @@ function phoneMenu(num) {
 const imgProxy = url => 'https://images.weserv.nl/?url=' + encodeURIComponent(url.replace(/^https?:\/\//i, ''));
 
 function renderBody(container, m) {
+  if (typeof phishNote === 'function') phishNote(container, m);
   if (!m.html) {
     container.innerHTML = `<div class="plain">${linkify(m.text || m.snippet || '')}</div>`;
     return;
   }
   // HTML mailler, scriptleri çalıştıramayan izole bir çerçevede gösterilir
+  const stats = {};
   const f = document.createElement('iframe');
   f.setAttribute('sandbox', 'allow-same-origin allow-popups allow-popups-to-escape-sandbox');
   f.className = 'mailframe';
@@ -1011,8 +1088,9 @@ function renderBody(container, m) {
     <meta name="referrer" content="no-referrer">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <style>html{overflow-x:auto}body{margin:0;padding:16px;font:15px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;color:#1d1d1f;background:#fff;overflow-wrap:anywhere}
-    img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${prepareHtml(m.html)}</body></html>`;
+    img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${prepareHtml(m.html, stats)}</body></html>`;
   container.appendChild(f);
+  trackerNote(container, m, stats);
   const fit = () => { try { f.style.height = f.contentDocument.documentElement.scrollHeight + 'px'; } catch {} };
 
   let wired = false;
@@ -1119,11 +1197,18 @@ function openCompose(init = {}) {
       <label class="field"><span>Kime</span><input name="to" type="text" inputmode="email" autocomplete="email" value="${esc(init.to || '')}" required></label>
       ${init.cc ? `<label class="field"><span>Cc</span><input name="cc" type="text" value="${esc(init.cc)}"></label>` : ''}
       <label class="field"><span>Konu</span><input name="subject" type="text" spellcheck="true" lang="tr" autocorrect="on" autocapitalize="sentences" value="${esc(init.subject || '')}"></label>
-      <textarea name="body" spellcheck="true" lang="tr" autocorrect="on" autocapitalize="sentences" placeholder="Mesajını yaz…">${esc(init.body || '')}</textarea>
+      <textarea name="body" spellcheck="true" lang="tr" autocorrect="on" autocapitalize="sentences" placeholder="Mesajını yaz…">
+${esc(typeof bodyWithSignature === 'function' ? bodyWithSignature(init) : (init.body || ''))}</textarea>
     </form>
   </div>`;
   const form = $('#composeForm');
   const ta = form.body;
+  // Metin alanına ilk girişte imleç en başta olsun (imzanın altında değil)
+  // Tıklama imleci tıklanan yere koyar; henüz bir şey yazılmadıysa başa al
+  const untouched = ta.value;
+  const toTop = () => { if (ta.value === untouched && untouched.startsWith('\n')) { ta.setSelectionRange(0, 0); ta.scrollTop = 0; } };
+  ta.addEventListener('focus', () => { toTop(); setTimeout(toTop, 0); }, { once: true });
+  ta.addEventListener('mouseup', () => setTimeout(toTop, 0), { once: true });
   setTimeout(() => {
     (init.to ? ta : form.to).focus();
     if (init.to) ta.setSelectionRange(0, 0);
@@ -1131,13 +1216,16 @@ function openCompose(init = {}) {
   form.addEventListener('submit', async e => {
     e.preventDefault();
     if (!emailsIn(form.to.value).length) { toast('Geçerli bir alıcı adresi gir'); return; }
+    const msg = {
+      to: form.to.value, cc: form.cc?.value, subject: form.subject.value, body: ta.value,
+      inReplyTo: init.inReplyTo, references: init.references
+    };
+    // Göndermeyi geri al: posta birkaç saniye bekletilir, bu sürede vazgeçilebilir
+    if (typeof undoDelay === 'function' && undoDelay() > 0) { closeModal(); queueSend(msg, init); return; }
     const btn = form.querySelector('[type=submit]');
     btn.disabled = true; btn.textContent = 'Gönderiliyor…';
     try {
-      await Gmail.send({
-        to: form.to.value, cc: form.cc?.value, subject: form.subject.value, body: ta.value,
-        inReplyTo: init.inReplyTo, references: init.references
-      }, init.threadId);
+      await Gmail.send(msg, init.threadId);
       closeModal();
       toast('Gönderildi');
       if (init.threadId && S.threadId === init.threadId) openThread(init.threadId);
@@ -1157,14 +1245,14 @@ function replyTo(m) {
   const sentByMe = m.fromEmail === S.email;
   openCompose({
     title: 'Yanıtla', to: sentByMe ? m.to : (m.replyTo || `${m.from} <${m.fromEmail}>`), subject: subj,
-    body: quoteOf(m), inReplyTo: m.messageId, references: m.references, threadId: S.thread.id
+    body: quoteOf(m), kind: 'reply', inReplyTo: m.messageId, references: m.references, threadId: S.thread.id
   });
 }
 function forward(m) {
   const subj = /^(fwd?|ilt)\s*:/i.test(m.subject) ? m.subject : 'Fwd: ' + m.subject;
   const txt = m.text || (m.html ? htmlToText(m.html) : m.snippet);
   openCompose({
-    title: 'İlet', subject: subj,
+    title: 'İlet', subject: subj, kind: 'forward',
     body: `\n\n---------- İletilen ileti ----------\nGönderen: ${m.from} <${m.fromEmail}>\nTarih: ${fmtDate(m.date, true)}\nKonu: ${m.subject}\nKime: ${m.to}\n\n${txt}`
   });
 }
@@ -1787,11 +1875,16 @@ async function start() {
   try {
     const [p, labels] = await Promise.all([Gmail.profile(), Gmail.labels()]);
     S.email = p.email;
+    if (typeof accessGate === 'function' && !(await accessGate(p.email))) return;
     store.set('email', p.email);
     setLabels(labels);
     renderSidebar();
     if (typeof maybeShowWhatsNew === 'function') maybeShowWhatsNew();
     if (typeof schedStart === 'function') schedStart();
+    if (typeof loadSignature === 'function') loadSignature();
+    if (typeof snStart === 'function') snStart();
+    if (typeof ntfStart === 'function') ntfStart();
+    if (typeof loadPhishRules === 'function') loadPhishRules().then(() => renderList());
     await loadList();
   } catch (e) {
     if (!(e instanceof AuthError)) showLogin('Gmail\'e bağlanılamadı: ' + e.message);

@@ -17,10 +17,11 @@
   let seq = 0;
   const T = (label, from, subject, text, ago, opts = {}) => ({
     id: 't' + (++seq), label, from, subject, text, date: now - ago, unread: !!opts.unread,
-    starred: !!opts.starred, inbox: opts.inbox !== false, html: opts.html, ics: !!opts.ics
+    starred: !!opts.starred, inbox: opts.inbox !== false, html: opts.html, ics: !!opts.ics, auth: opts.auth || ''
   });
   const raw = [
-    T('L20', 'Trendyol <kampanya@trendyol.com>', 'Siparişin kargoya verildi 📦', 'Merhaba, 4 Ekim tarihli siparişin kargoya verildi. Takip numarası: 7281 0034 9921.', 1.2 * H, { unread: true, html: '<div style="font-family:Arial;max-width:560px;margin:auto"><div style="background:#f27a1a;color:#fff;padding:18px 20px;font-size:20px;font-weight:bold">trendyol</div><div style="padding:20px"><h2 style="margin-top:0">Siparişin yolda!</h2><p>Merhaba, 4 Ekim tarihli siparişin kargoya verildi.</p><table style="width:100%;border-collapse:collapse;margin:16px 0"><tr><td style="padding:8px;border-bottom:1px solid #eee">Kargo firması</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right"><b>Trendyol Express</b></td></tr><tr><td style="padding:8px">Takip no</td><td style="padding:8px;text-align:right"><b>7281 0034 9921</b></td></tr></table><a href="https://example.com" style="display:inline-block;background:#f27a1a;color:#fff;padding:12px 22px;border-radius:6px;text-decoration:none">Kargomu takip et</a></div></div>' }),
+    T('L20', 'Trendyol <kampanya@trendyol.com>', 'Siparişin kargoya verildi 📦', 'Merhaba, 4 Ekim tarihli siparişin kargoya verildi. Takip numarası: 7281 0034 9921.', 1.2 * H, { unread: true, html: '<div style="font-family:Arial;max-width:560px;margin:auto"><div style="background:#f27a1a;color:#fff;padding:18px 20px;font-size:20px;font-weight:bold">trendyol</div><div style="padding:20px"><h2 style="margin-top:0">Siparişin yolda!</h2><p>Merhaba, 4 Ekim tarihli siparişin kargoya verildi.</p><table style="width:100%;border-collapse:collapse;margin:16px 0"><tr><td style="padding:8px;border-bottom:1px solid #eee">Kargo firması</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right"><b>Trendyol Express</b></td></tr><tr><td style="padding:8px">Takip no</td><td style="padding:8px;text-align:right"><b>7281 0034 9921</b></td></tr></table><a href="https://example.com" style="display:inline-block;background:#f27a1a;color:#fff;padding:12px 22px;border-radius:6px;text-decoration:none">Kargomu takip et</a></div><img src="https://euromsg.trendyol.com/open.gif?u=8f2a" width="1" height="1" alt=""><img src="https://trendyol.list-manage.com/track/open.php?u=abc&amp;id=1" style="display:none"><img src="https://pixel.insider.com/e/o/xyz" width="0" height="0"></div>' }),
+    T('INBOX', 'Garanti BBVA Güvenlik <guvenlik@garanti-bbva-onay.com>', 'Hesabınız geçici olarak askıya alındı – hemen doğrulayın', 'Sayın müşterimiz, olağandışı bir giriş tespit edildi. Hesabınızı 24 saat içinde doğrulamazsanız kartınız bloke edilecektir.', 1.5 * 3600e3, { unread: true, auth: 'mx.google.com; spf=softfail smtp.mailfrom=garanti-bbva-onay.com; dkim=none; dmarc=fail (p=NONE) header.from=garanti-bbva-onay.com', html: '<div style="font-family:Arial;max-width:560px"><div style="background:#00854a;color:#fff;padding:16px 20px;font-size:20px;font-weight:bold">Garanti BBVA</div><div style="padding:20px"><p>Sayın müşterimiz,</p><p>Hesabınızda olağandışı bir giriş tespit edildi. Hesabınızı <b>24 saat içinde</b> doğrulamazsanız kartınız bloke edilecektir.</p><p><a href="http://185.22.10.4/garanti/login">www.garantibbva.com.tr</a></p></div></div>' }),
     T('L8', 'Garanti BBVA <bilgilendirme@garantibbva.com.tr>', 'Kredi kartı ekstreniz hazır – Ayşe Erdoğan', 'Sayın Ayşe Erdoğan, **** 4417 numaralı kartınızın Ekim dönemi ekstresi hazırlanmıştır. Son ödeme tarihi: 15 Ekim 2026.', 3 * H, { unread: true }),
     T('L17', 'Riot Games <noreply@mail.riotgames.com>', 'Yeni sezon başladı: ödüllerini al', 'Sezon 3 başladı. Derecelendirilmiş maçlara gir ve sezon ödüllerini topla.', 5 * H, { unread: true }),
     T('L19', 'Steam <noreply@steampowered.com>', 'İstek listendeki 3 oyun indirimde!', 'İstek listendeki Hades II, Balatro ve Hollow Knight: Silksong şu anda indirimde.', 6 * H, { unread: true, inbox: false }),
@@ -68,7 +69,7 @@
   function summary(t) {
     const f = addr(t.msg.from);
     return { id: t.id, from: f.name, fromEmail: f.email, to: 'Sinan', subject: t.msg.subject, snippet: t.msg.text.slice(0, 120),
-      date: t.msg.date, count: 1, labelIds: [...t.labelIds], unread: t.labelIds.includes('UNREAD'), starred: t.labelIds.includes('STARRED') };
+      date: t.msg.date, count: 1, labelIds: [...t.labelIds], unread: t.labelIds.includes('UNREAD'), starred: t.labelIds.includes('STARRED'), authResults: t.msg.auth || '' };
   }
   function counts() {
     return labels.map(l => {
@@ -127,7 +128,7 @@
       const f = addr(t.msg.from);
       return wait({ id, labelIds: [...t.labelIds], messages: [{
         id: id + 'm', labelIds: [...t.labelIds], from: f.name, fromEmail: f.email, to: 'Sinan Erdoğan <' + me + '>', cc: '', replyTo: '',
-        subject: t.msg.subject, date: t.msg.date, messageId: '<' + id + '@demo>', references: '', snippet: t.msg.text,
+        subject: t.msg.subject, date: t.msg.date, authResults: t.msg.auth || '', messageId: '<' + id + '@demo>', references: '', snippet: t.msg.text,
         ics: t.msg.ics ? icsFor() : '', icsAtt: null,
         html: t.msg.html || '', text: t.msg.text, inline: [], noteUuid: t.msg.uuid || '', noteCreated: t.msg.created || '',
         attachments: /ekstre|fatura|özet/i.test(t.msg.subject) ? [{ filename: 'ekstre_ekim_2026.pdf', mimeType: 'application/pdf', size: 184320, data: btoa('demo') }] : []
@@ -139,7 +140,8 @@
       return wait({});
     },
     trashMessages: ids => { ids.forEach(id => { const t = threads.find(x => x.id === id || x.id + 'm' === id); if (t) t.labelIds = ['TRASH']; }); return wait({}); },
-    createLabel: name => { const l = { id: 'L' + (labels.length + 1), name, type: 'user', color: null }; labels.push(l); return wait(l); },
+    deleteLabel: id => { const i = labels.findIndex(l => l.id === id); if (i >= 0) labels.splice(i, 1); threads.forEach(t => { t.labelIds = t.labelIds.filter(x => x !== id); }); return wait({}); },
+    createLabel: name => { const l = { id: 'L' + (labels.length + 100 + Math.floor(Math.random() * 1e6)), name, type: 'user', color: null }; labels.push(l); return wait(l); },
     insertNote: (raw, labelIds) => {
       const b = s => { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return new TextDecoder().decode(Uint8Array.from(atob(s), c => c.charCodeAt(0))); };
       const txt = b(raw); const [head, body] = txt.split('\r\n\r\n');

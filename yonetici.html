@@ -3,22 +3,20 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Mail</title>
+<title>Mail Yönetici</title>
+<meta name="robots" content="noindex">
 <meta name="theme-color" content="#26282c">
-<link rel="manifest" href="manifest.webmanifest?v=4">
-<link rel="icon" href="icon-192.png?v=4">
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
+<link rel="manifest" href="yonetici.webmanifest?v=1">
+<link rel="icon" href="yonetici-192.png?v=1">
+<link rel="apple-touch-icon" href="yonetici-apple.png?v=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Mail">
+<meta name="apple-mobile-web-app-title" content="Yönetici">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="cam.css" id="css-cam">
 <link rel="stylesheet" href="koyu.css" id="css-koyu" media="not all">
 <script>
-// Mail Yönetici'nin Google girişi buraya döner; yönetici sayfasına aktar
-if (/[#&]state=yon-/.test(location.hash)) location.replace('yonetici.html' + location.hash);
-// Görünümü sayfa çizilmeden önce uygula (açılışta renk sıçraması olmasın)
 function applyTheme(t) {
   var cam = document.getElementById('css-cam'), koyu = document.getElementById('css-koyu');
   cam.media = t === 'flat' ? 'not all' : 'all';
@@ -28,25 +26,10 @@ function applyTheme(t) {
 try { applyTheme(JSON.parse(localStorage.getItem('theme')) || 'light'); } catch (e) { applyTheme('light'); }
 </script>
 </head>
-<body>
+<body class="yonetici">
 <div id="app"></div>
-<div id="modal"></div>
 <div id="toast"></div>
 <script src="config.js"></script>
-<script src="mock.js"></script>
-<script src="app.js"></script>
-<script src="cal.js"></script>
-<script src="notes.js"></script>
-<script src="autocorrect.js"></script>
-<script src="schedule.js"></script>
-<script src="signature.js"></script>
-<script src="snooze.js"></script>
-<script src="undosend.js"></script>
-<script src="phish.js"></script>
-<script src="access.js"></script>
-<script src="notify.js"></script>
-<script src="select.js"></script>
-<script src="keys.js"></script>
-<script src="settings.js"></script>
+<script src="yonetici.js"></script>
 </body>
 </html>

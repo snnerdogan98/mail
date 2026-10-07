@@ -3,6 +3,23 @@
 'use strict';
 
 const CHANGELOG = [
+  { v: 'V0.5', date: '7 Ekim 2026', items: [
+    ['Yeni mail bildirimi', 'Program açıkken (küçültülmüş olsa da) yeni mail gelince köşede bildirim; tıklayınca mail açılır. Programa bakarken küçük bir uyarı çıkar. Okunmamış sayısı pencere başlığında ve destekleyen sistemlerde simgede. Ayarlar → Bildirimler.'],
+    ['Toplu seçim', 'Satırın solundaki yuvarlağa tıkla (Shift ile aralık seç, X tuşu) ya da telefonda maile basılı tut. Seçilenleri tek seferde arşivle, sil, okundu/okunmadı yap, etiketle ya da spam\'e taşı; hepsi geri alınabilir.'],
+    ['Mail Yönetici', 'Programın sahibi için ayrı bir yönetici programı (ana ekrana ya da bilgisayara ayrı simgeyle eklenir). Programı kimlerin kullanabileceğini belirler: herkes, sadece izin verdiklerin ya da engellediklerin hariç herkes. Google girişi + yönetici şifresiyle korunur. Kimsenin mailine dokunulmaz; izni olmayan sadece bu programı açamaz. Sen açana kadar kapalıdır.'],
+    ['Zamanlayıcı sürüm 4', 'Google zamanlayıcısına şifre korumalı erişim listesi servisi eklendi (Mail Yönetici için).']
+  ]},
+  { v: 'V0.4', date: '7 Ekim 2026', items: [
+    ['Sahte mail uyarısı', 'Banka, kurum ya da mağaza adıyla gelip adresi o kuruma ait olmayan, Gmail doğrulamasından geçemeyen ya da aldatıcı link içeren maillerde kırmızı uyarı; listede ⚠ işareti. Ayrıntılar gizlenince belirgin bir şerit olarak kalır. "Spam olarak işaretle" ve "Bu gönderen güvenli" düğmeleri.'],
+    ['Takip pikseli engelleme', 'Kampanya maillerindeki görünmez takip resimleri silinir; gönderen maili açtığını ve nereden açtığını öğrenemez. İstersen tüm resimleri gizli yükleyebilirsin (Ayarlar → Gizlilik).'],
+    ['Ertele', 'Bir maili Bugün daha sonra, Bu akşam, Yarın sabah, Hafta sonu, Gelecek hafta ya da istediğin zamana ertele. Zamanı gelince gelen kutusunun en üstüne döner. Menüde "Ertelenenler" bölümü.'],
+    ['Göndermeyi geri al', 'Gönder\'e bastıktan sonra 10 saniye (Ayarlar\'dan 5–30 sn ya da kapalı) vazgeçme şansı.'],
+    ['İmza', 'Gmail\'deki imzanla eşitlenir; yeni postalara ve yanıtlara otomatik eklenir. Ayarlar → İmza.'],
+    ['Klavye kısayolları', 'Gmail\'deki gibi: J/K gezin, E arşivle, R yanıtla, C yeni posta, B ertele, Ctrl+Enter gönder… ? tuşu listeyi açar; her kısayol değiştirilebilir.'],
+    ['Takvim: Ajanda', 'Önümüzdeki 30 günün etkinlikleri gün gün liste halinde.'],
+    ['Gizlilik', 'Zamanlanmış maillerden planlanan saat bilgisi göndermeden önce silinir.'],
+    ['İyileştirmeler', 'Bildirim yazıları cam görünümde daha okunaklı; yeni postada imleç imzanın üstünde başlar.']
+  ]},
   { v: 'V0.3', date: '6 Ekim 2026', items: [
     ['Windows programı', 'Mail artık kurulabilen bir Windows programı olarak da var. Giriş bir kez tarayıcıda yapılır, program oturumu güvenle hatırlar.'],
     ['Zamanlanmış gönderim', 'Yeni postada saat simgesiyle göndermeyi ileri bir zamana planla. Zamanlanmış postalar menüde ayrı bölümde; saatini değiştir, hemen gönder ya da iptal et. Google zamanlayıcısı kurulursa cihazların kapalıyken de tam saatinde gider.'],

@@ -1,0 +1,15 @@
+{
+  "id": "./yonetici.html",
+  "name": "Mail Yönetici",
+  "short_name": "Yönetici",
+  "start_url": "./yonetici.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#26282c",
+  "theme_color": "#26282c",
+  "icons": [
+    { "src": "yonetici-192.png?v=1", "sizes": "192x192", "type": "image/png" },
+    { "src": "yonetici-512.png?v=1", "sizes": "512x512", "type": "image/png" },
+    { "src": "yonetici-maskable.png?v=1", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -55,8 +55,10 @@ const evOnDay = (ev, day) => { const { s, e } = evRange(ev); const d0 = dayStart
 
 const C = { mode: store.get('calMode', 'month'), cursor: new Date(), events: [], loading: false, error: '' };
 
+const AGENDA_DAYS = 30;
 function calRange() {
   if (C.mode === 'week') { const s = mondayOf(C.cursor); return [s, addDays(s, 7)]; }
+  if (C.mode === 'agenda') { const s = dayStart(C.cursor); return [s, addDays(s, AGENDA_DAYS)]; }
   const first = new Date(C.cursor.getFullYear(), C.cursor.getMonth(), 1);
   const s = mondayOf(first); return [s, addDays(s, 42)];
 }
@@ -87,6 +89,10 @@ async function loadEvents() {
 }
 
 function calTitle() {
+  if (C.mode === 'agenda') {
+    const s = dayStart(C.cursor), e = addDays(s, AGENDA_DAYS - 1);
+    return `${s.getDate()} ${TR_MONTHS[s.getMonth()].slice(0, 3)} – ${e.getDate()} ${TR_MONTHS[e.getMonth()].slice(0, 3)} ${e.getFullYear()}`;
+  }
   if (C.mode === 'week') {
     const s = mondayOf(C.cursor), e = addDays(s, 6);
     return s.getMonth() === e.getMonth()
@@ -112,12 +118,13 @@ function renderCal() {
       <div class="seg">
         <button class="${C.mode === 'month' ? 'on' : ''}" data-action="cal-mode" data-m="month">Ay</button>
         <button class="${C.mode === 'week' ? 'on' : ''}" data-action="cal-mode" data-m="week">Hafta</button>
+        <button class="${C.mode === 'agenda' ? 'on' : ''}" data-action="cal-mode" data-m="agenda">Ajanda</button>
       </div>
       <div class="spacer"></div>
       ${C.loading ? '<span class="cal-loading">Yükleniyor…</span>' : ''}
       <button class="btn primary" data-action="cal-new">${IC.plus} Etkinlik</button>
     </header>
-    ${C.error ? calErrorHtml() : (C.mode === 'month' ? monthHtml() : weekHtml())}`;
+    ${C.error ? calErrorHtml() : (C.mode === 'month' ? monthHtml() : C.mode === 'agenda' ? agendaHtml() : weekHtml())}`;
   const sc = el.querySelector('.wk-scroll');
   if (sc) sc.scrollTop = prevScroll ?? 8 * 48 - 10;
 }
@@ -155,6 +162,43 @@ function monthHtml() {
     </div>`;
   }
   return `<div class="month"><div class="mhead">${TR_DOW.map(d => `<span>${d}</span>`).join('')}</div><div class="mgrid">${cells}</div></div>`;
+}
+
+/* Ajanda: önümüzdeki 30 gün, gün gün liste */
+const TR_DOW_LONG = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+function agendaHtml() {
+  const [start] = calRange(), today = dayStart(new Date());
+  let html = '', any = false;
+  for (let i = 0; i < AGENDA_DAYS; i++) {
+    const d = addDays(start, i);
+    const evs = C.events.filter(ev => evOnDay(ev, d))
+      .sort((a, b) => (evRange(b).allDay - evRange(a).allDay) || (evRange(a).s - evRange(b).s));
+    const isToday = sameDay(d, today), diff = Math.round((d - today) / 864e5);
+    if (!evs.length && !isToday) continue;
+    any = any || evs.length > 0;
+    const label = isToday ? 'Bugün' : diff === 1 ? 'Yarın' : diff === -1 ? 'Dün' : '';
+    html += `<section class="ag-day ${isToday ? 'today' : ''} ${d < today ? 'past' : ''}">
+      <header class="ag-dh" data-action="cal-day" data-d="${ymd(d)}" title="Bu güne etkinlik ekle">
+        <span class="ag-num">${d.getDate()}</span>
+        <span class="ag-when">${label ? `<b>${label}</b> · ` : ''}${TR_MONTHS[d.getMonth()]} ${TR_DOW_LONG[d.getDay()]}</span>
+      </header>
+      ${evs.length ? evs.map(ev => {
+        const { s, e, allDay } = evRange(ev);
+        const multi = allDay ? (e - s) > 864e5 : !sameDay(s, new Date(e - 1));
+        const time = allDay ? 'Tüm gün'
+          : multi ? (sameDay(s, d) ? `${hm(s)} →` : sameDay(new Date(e - 1), d) ? `→ ${hm(e)}` : 'Tüm gün')
+          : `${hm(s)}–${hm(e)}`;
+        const past = !allDay && e < new Date();
+        return `<div class="ag-ev ${past ? 'done' : ''}" data-action="cal-open" data-id="${esc(ev.id)}" style="--c:${evColor(ev)}">
+          <span class="ag-time">${time}</span>
+          <span class="ag-bar"></span>
+          <span class="ag-main"><b>${esc(ev.summary || '(başlıksız)')}</b>${ev.location ? `<small>${IC.pin}${esc(ev.location)}</small>` : ''}</span>
+        </div>`;
+      }).join('') : '<div class="ag-empty">Bugün etkinlik yok</div>'}
+    </section>`;
+  }
+  if (!any && !C.loading) html += `<div class="ag-none">Bu ${AGENDA_DAYS} günde başka etkinlik yok.</div>`;
+  return `<div class="agenda">${html}<button class="btn ag-more" data-action="cal-next">Sonraki ${AGENDA_DAYS} gün ${IC.chevR}</button></div>`;
 }
 
 const HOUR_PX = 48;
@@ -485,8 +529,8 @@ function eventFromMail(x) {
 
 Object.assign(ACTIONS, {
   'open-cal': () => openCal(),
-  'cal-prev': () => { C.cursor = C.mode === 'week' ? addDays(C.cursor, -7) : new Date(C.cursor.getFullYear(), C.cursor.getMonth() - 1, 1); loadEvents(); },
-  'cal-next': () => { C.cursor = C.mode === 'week' ? addDays(C.cursor, 7) : new Date(C.cursor.getFullYear(), C.cursor.getMonth() + 1, 1); loadEvents(); },
+  'cal-prev': () => { C.cursor = C.mode === 'week' ? addDays(C.cursor, -7) : C.mode === 'agenda' ? addDays(C.cursor, -AGENDA_DAYS) : new Date(C.cursor.getFullYear(), C.cursor.getMonth() - 1, 1); loadEvents(); },
+  'cal-next': () => { C.cursor = C.mode === 'week' ? addDays(C.cursor, 7) : C.mode === 'agenda' ? addDays(C.cursor, AGENDA_DAYS) : new Date(C.cursor.getFullYear(), C.cursor.getMonth() + 1, 1); loadEvents(); if (C.mode === 'agenda') $('.agenda')?.scrollTo?.(0, 0); },
   'cal-today': () => { C.cursor = new Date(); loadEvents(); },
   'cal-mode': el => { C.mode = el.dataset.m; store.set('calMode', C.mode); loadEvents(); },
   'cal-reload': () => loadEvents(),

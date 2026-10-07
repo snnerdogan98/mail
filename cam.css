@@ -44,3 +44,8 @@ body { background: transparent !important; }
   border: 1px solid rgba(255,255,255,.7); }
 .modal-bg { background: rgba(40,44,52,.28) !important; -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
 .toast-in { background: rgba(38,40,44,.88) !important; -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); }
+.sched-pop { background: rgba(246,247,248,.95) !important; -webkit-backdrop-filter: blur(30px) saturate(1.3); backdrop-filter: blur(30px) saturate(1.3); border-color: rgba(255,255,255,.8) !important; }
+/* Bildirim yazısı cam renklerinde soluk kalıyordu */
+.toast-in { color: #f1f3f6 !important; }
+.toast-in .btn:not(.primary) { color: #f1f3f6; border-color: rgba(255,255,255,.3); }
+.toast-in .btn.primary { background: #e6e9ed !important; color: #1b1d21 !important; border-color: #e6e9ed !important; }
