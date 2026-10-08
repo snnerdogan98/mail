@@ -53,10 +53,10 @@
   raw.push(T('L13', 'Ben <snn.erdogan98@gmail.com>', 'Tatil fikirleri', 'Kaş, Kalkan, Bozcaada. Haziran başı uygun. Otel yerine ev kiralamayı düşün.', 6 * D, { inbox: false }));
   raw.push(T(null, 'Ali Veli <ali.veli@ornekfirma.com>', 'Davet: Proje toplantısı', 'Proje toplantısına davetlisiniz. Gündem: yeni sürüm planı.', 5 * H, { unread: true, ics: true }));
   raw.push(T(null, 'Ayşe Kaya <ayse.kaya@ornekajans.com>', 'Web sitesi yenileme teklifi', 'Merhaba Sinan Bey,\n\nGeçen hafta konuştuğumuz web sitesi yenileme işi için teklifimizi ekte Word dosyası olarak gönderiyorum. Uygun görürseniz sözleşmeyi hazırlayalım.\n\nİyi çalışmalar,\nAyşe Kaya\nÖrnek Ajans', 2.5 * H, { unread: true,
-    att: { filename: 'Web_Sitesi_Teklifi.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 38051, url: 'demo/teklif.docx' } }));
+    att: { filename: 'Web_Sitesi_Teklifi.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 38051, url: 'teklif.docx' } }));
   raw.push(T(null, 'Can Demir <can.demir@ornekfirma.com>', 'Ekim bütçesi ve proje sunumu', 'Selam Sinan,\n\nEkim bütçesinin son halini ve yarınki toplantı için sunumu ekledim. Bir göz atarsan sevinirim.\n\nCan', 3.2 * H, { unread: true,
-    att: [{ filename: 'Ekim_Butcesi.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', size: 8205, url: 'demo/butce.xlsx' },
-          { filename: 'Proje_Sunumu.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', size: 30366, url: 'demo/sunum.pptx' }] }));
+    att: [{ filename: 'Ekim_Butcesi.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', size: 8205, url: 'butce.xlsx' },
+          { filename: 'Proje_Sunumu.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', size: 30366, url: 'sunum.pptx' }] }));
   // Taramada çakışma göstermek için: Garanti ve Annem Garanti aynı adresten
   raw.push(T('L8', 'Garanti BBVA <bilgilendirme@garantibbva.com.tr>', 'Eylül ekstreniz – Ayşe Erdoğan', 'Sayın Ayşe Erdoğan, Eylül dönemi ekstreniz hazırlanmıştır.', 30 * D, { inbox: false }));
   raw.push(T('L7', 'Garanti BBVA <bilgilendirme@garantibbva.com.tr>', 'Bonus puan kazandınız', 'Sayın Sinan Erdoğan, 120 bonus kazandınız.', 20 * D, { inbox: false }));
