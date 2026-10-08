@@ -4,7 +4,7 @@
  */
 'use strict';
 
-const APP_VERSION = 'V0.5';
+const APP_VERSION = 'V0.6';
 const CLIENT_ID = (window.MAIL_CONFIG && window.MAIL_CONFIG.CLIENT_ID || '').trim();
 const DEMO = new URLSearchParams(location.search).has('demo');
 const SCOPES = [
@@ -249,7 +249,7 @@ const Auth = {
         .then(t => { keepDesktopToken(t); start(); })
         .catch(e => showLogin(/zaman|access_denied/.test(e.message) ? 'Giriş tamamlanmadı, tekrar dene.' : 'Giriş yapılamadı: ' + e.message));
     }
-    const state = Math.random().toString(36).slice(2);
+    const state = (window.AUTH_STATE_PREFIX || '') + Math.random().toString(36).slice(2);
     store.set('oauthState', state);
     if (silent) store.set('silentAt', Date.now());
     const p = new URLSearchParams({
@@ -918,7 +918,7 @@ function renderThread() {
             <span class="date">${fmtDate(m.date, open)}</span>
           </header>
           ${open ? `<div class="msg-body"></div>
-            ${m.attachments.length ? `<div class="atts">${m.attachments.map((a, ai) => `<button class="att" data-action="att" data-mid="${m.id}" data-ai="${ai}">${IC.clip}<span>${esc(a.filename)}</span><small>${fmtSize(a.size)}</small></button>`).join('')}</div>` : ''}
+            ${m.attachments.length ? `<div class="atts">${m.attachments.map((a, ai) => `<button class="att" data-action="att" data-mid="${m.id}" data-ai="${ai}">${IC.clip}<span>${esc(a.filename)}</span><small>${fmtSize(a.size)}</small></button>${typeof pdfAttBtn === 'function' ? pdfAttBtn(m, a, ai) : ''}`).join('')}</div>` : ''}
             <div class="msg-actions">
               <button class="btn" data-action="reply" data-mid="${m.id}">${IC.reply} Yanıtla</button>
               <button class="btn" data-action="forward" data-mid="${m.id}">${IC.forward} İlet</button>
@@ -1087,11 +1087,35 @@ function renderBody(container, m) {
   f.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><base target="_blank">
     <meta name="referrer" content="no-referrer">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <style>html{overflow-x:auto}body{margin:0;padding:16px;font:15px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;color:#1d1d1f;background:#fff;overflow-wrap:anywhere}
-    img{max-width:100%;height:auto}table{max-width:100%}pre{white-space:pre-wrap}</style></head><body>${prepareHtml(m.html, stats)}</body></html>`;
+    <style>html{overflow:hidden}body{margin:0;padding:16px;font:15px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;color:#1d1d1f;background:#fff;overflow-wrap:anywhere}
+    #mf{transform-origin:0 0}img{max-width:100%;height:auto}pre{white-space:pre-wrap}@media (max-width:480px){body{padding:10px 8px}}</style></head><body><div id="mf">${prepareHtml(m.html, stats)}</div></body></html>`;
   container.appendChild(f);
   trackerNote(container, m, stats);
-  const fit = () => { try { f.style.height = f.contentDocument.documentElement.scrollHeight + 'px'; } catch {} };
+  // Ekrandan geniş mailler (sabit 600-700 px kampanya/banka mailleri) telefonda taşmasın: orantılı küçült, Gmail gibi
+  let fitRaf = 0;
+  const fitNow = () => {
+    fitRaf = 0;
+    if (!f.isConnected) { removeEventListener('resize', fit); return; }
+    try {
+      const doc = f.contentDocument, mf = doc.getElementById('mf');
+      if (!mf) { f.style.height = doc.documentElement.scrollHeight + 'px'; return; }
+      mf.style.transform = ''; mf.style.width = '';
+      const avail = mf.clientWidth;
+      let natural = mf.scrollWidth;
+      mf.querySelectorAll(':scope > *, table[width], table[style*="width"], img[width]').forEach(el => { natural = Math.max(natural, el.scrollWidth || 0, el.offsetWidth || 0); });
+      let k = 1;
+      if (avail > 0 && natural > avail + 4) {
+        k = Math.max(0.3, avail / natural);
+        mf.style.width = natural + 'px';
+        mf.style.transform = `scale(${k})`;
+      }
+      f.dataset.scale = k.toFixed(3);
+      const cs = getComputedStyle(doc.body);
+      f.style.height = Math.ceil(mf.offsetHeight * k + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)) + 'px';
+    } catch {}
+  };
+  const fit = () => { if (!fitRaf) fitRaf = requestAnimationFrame(fitNow); };
+  addEventListener('resize', fit);
 
   let wired = false;
   const wire = () => {
@@ -1100,7 +1124,7 @@ function renderBody(container, m) {
     if (wired || !doc || !doc.body || doc.URL !== 'about:srcdoc') return;
     wired = true;
     fit();
-    try { new ResizeObserver(fit).observe(doc.body); } catch {}
+    try { new ResizeObserver(fit).observe(doc.getElementById('mf') || doc.body); } catch {}
     doc.addEventListener('click', ev => {
       const a = ev.target.closest?.('a[href^="tel:" i]');
       if (!a) return;
@@ -1694,8 +1718,8 @@ const ACTIONS = {
     const a = m.attachments[+el.dataset.ai];
     try {
       el.classList.add('busy');
-      const data = a.data || await Gmail.attachment(m.id, a.attachmentId);
-      const blob = new Blob([b64urlToBytes(data)], { type: a.mimeType || 'application/octet-stream' });
+      const bytes = a.url ? new Uint8Array(await (await fetch(a.url)).arrayBuffer()) : b64urlToBytes(a.data || await Gmail.attachment(m.id, a.attachmentId));
+      const blob = new Blob([bytes], { type: a.mimeType || 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
       const link = Object.assign(document.createElement('a'), { href: url, download: a.filename, target: '_blank' });
       document.body.appendChild(link); link.click(); link.remove();
@@ -1796,13 +1820,44 @@ document.addEventListener('dragstart', e => {
   setTimeout(() => ghost.remove(), 0);
   document.body.classList.add('is-dragging');
 });
+/* Sürüklerken kenar çubuğunu kendimiz kaydırıyoruz (tarayıcınınki kimi zaman fırlıyor, kimi zaman hiç kaymıyor):
+   fare üst/alt kenara yaklaştıkça hız yumuşakça artar, kenardan uzaklaşınca durur. */
+let dsSpeed = 0, dsBox = null, dsRaf = 0;
+function dragScrollBox() {
+  return [$('.sidebar nav'), $('#sidebar')].find(el => el && el.scrollHeight > el.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(el).overflowY));
+}
+function dragScrollTick() {
+  if (!dsSpeed || !dsBox || !dragId) { dsRaf = 0; return; }
+  dsBox.scrollTop += dsSpeed;
+  dsRaf = requestAnimationFrame(dragScrollTick);
+}
+function dragScrollAt(x, y) {
+  const box = dragScrollBox(), side = $('#sidebar');
+  dsSpeed = 0;
+  if (box && side) {
+    const r = box.getBoundingClientRect(), s = side.getBoundingClientRect();
+    if (x >= s.left && x <= s.right) {
+      const zone = Math.min(90, r.height / 4), MAX = 11;
+      const curve = d => Math.max(1.5, MAX * Math.min(1, Math.pow((zone - d) / zone, 1.6)));
+      if (y < r.top + zone && box.scrollTop > 0) dsSpeed = -curve(Math.max(0, y - r.top));
+      else if (y > r.bottom - zone && box.scrollTop + box.clientHeight < box.scrollHeight - 1) dsSpeed = curve(Math.max(0, r.bottom - y));
+    }
+  }
+  dsBox = box;
+  if (dsSpeed && !dsRaf) dsRaf = requestAnimationFrame(dragScrollTick);
+}
+const dragScrollStop = () => { dsSpeed = 0; };
+document.addEventListener('dragleave', e => { if (!e.relatedTarget) dragScrollStop(); });
+
 document.addEventListener('dragend', () => {
+  dragScrollStop();
   dragId = null;
   document.body.classList.remove('is-dragging');
   document.querySelectorAll('.dragging, .drop-over').forEach(el => el.classList.remove('dragging', 'drop-over'));
 });
 document.addEventListener('dragover', e => {
   if (!dragId) return;
+  dragScrollAt(e.clientX, e.clientY);
   const nav = e.target.closest?.('.nav-item[data-action="open-label"]');
   document.querySelectorAll('.drop-over').forEach(el => el !== nav && el.classList.remove('drop-over'));
   if (!nav || !DROP_OK(nav.dataset.id) || nav.dataset.id === S.labelId) return;
@@ -1813,6 +1868,7 @@ document.addEventListener('dragover', e => {
 document.addEventListener('drop', async e => {
   const nav = e.target.closest?.('.nav-item[data-action="open-label"]');
   const id = dragId;
+  dragScrollStop();
   if (!nav || !id) return;
   e.preventDefault();
   nav.classList.remove('drop-over');

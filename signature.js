@@ -31,7 +31,7 @@ async function loadSignature() {
     const list = await Gmail.sendAs();
     const me = list.find(x => x.isPrimary) || list.find(x => x.sendAsEmail === S.email) || list[0];
     if (!me) return;
-    SIG.email = me.sendAsEmail; SIG.html = me.signature || ''; SIG.text = sigToText(SIG.html);
+    SIG.email = me.sendAsEmail; SIG.name = me.displayName || ''; SIG.html = me.signature || ''; SIG.text = sigToText(SIG.html);
     SIG.rich = /<img|<a\s|<table|style=|<font|<b>|<strong|<i>/i.test(SIG.html);
     SIG.loaded = true;
   } catch {}

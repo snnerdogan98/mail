@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mail</title>
 <meta name="theme-color" content="#26282c">
-<link rel="manifest" href="manifest.webmanifest?v=4">
+<link rel="manifest" href="manifest.webmanifest?v=5">
 <link rel="icon" href="icon-192.png?v=4">
-<link rel="apple-touch-icon" href="apple-touch-icon.png?v=4">
+<link rel="apple-touch-icon" href="apple-touch-icon.png?v=6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,6 +18,7 @@
 <script>
 // Mail Yönetici'nin Google girişi buraya döner; yönetici sayfasına aktar
 if (/[#&]state=yon-/.test(location.hash)) location.replace('yonetici.html' + location.hash);
+if (/[#&]state=not-/.test(location.hash)) location.replace('notlar.html' + location.hash);
 // Görünümü sayfa çizilmeden önce uygula (açılışta renk sıçraması olmasın)
 function applyTheme(t) {
   var cam = document.getElementById('css-cam'), koyu = document.getElementById('css-koyu');
@@ -45,6 +46,11 @@ try { applyTheme(JSON.parse(localStorage.getItem('theme')) || 'light'); } catch 
 <script src="access.js"></script>
 <script src="notify.js"></script>
 <script src="select.js"></script>
+<script src="ctxmenu.js"></script>
+<script src="contacts.js"></script>
+<script src="feedback.js"></script>
+<script src="about.js"></script>
+<script src="pdfconvert.js"></script>
 <script src="keys.js"></script>
 <script src="settings.js"></script>
 </body>

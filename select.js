@@ -74,17 +74,18 @@ renderList = function (...a) { _selRenderList.apply(this, a); selRender(); };
 
 /* Toplu işlem */
 const SEL_OPS = {
-  archive: { add: [], rm: ['INBOX'], drop: () => S.labelId === 'INBOX', msg: n => `${n} konu arşivlendi`, undo: { add: ['INBOX'], rm: [] } },
-  read: { add: [], rm: ['UNREAD'], msg: n => `${n} konu okundu yapıldı`, undo: { add: ['UNREAD'], rm: [] } },
-  unread: { add: ['UNREAD'], rm: [], msg: n => `${n} konu okunmadı yapıldı`, undo: { add: [], rm: ['UNREAD'] } },
-  spam: { add: ['SPAM'], rm: ['INBOX'], drop: () => true, msg: n => `${n} konu spam'e taşındı`, undo: { add: ['INBOX'], rm: ['SPAM'] } },
-  notspam: { add: ['INBOX'], rm: ['SPAM'], drop: () => true, msg: n => `${n} konu gelen kutusuna taşındı`, undo: { add: ['SPAM'], rm: ['INBOX'] } }
+  archive: { one: 'Arşivlendi', add: [], rm: ['INBOX'], drop: () => S.labelId === 'INBOX', msg: n => `${n} konu arşivlendi`, undo: { add: ['INBOX'], rm: [] } },
+  read: { one: 'Okundu yapıldı', add: [], rm: ['UNREAD'], msg: n => `${n} konu okundu yapıldı`, undo: { add: ['UNREAD'], rm: [] } },
+  unread: { one: 'Okunmadı yapıldı', add: ['UNREAD'], rm: [], msg: n => `${n} konu okunmadı yapıldı`, undo: { add: [], rm: ['UNREAD'] } },
+  spam: { one: 'Spam\'e taşındı', add: ['SPAM'], rm: ['INBOX'], drop: () => true, msg: n => `${n} konu spam'e taşındı`, undo: { add: ['INBOX'], rm: ['SPAM'] } },
+  notspam: { one: 'Gelen kutusuna taşındı', add: ['INBOX'], rm: ['SPAM'], drop: () => true, msg: n => `${n} konu gelen kutusuna taşındı`, undo: { add: ['SPAM'], rm: ['INBOX'] } }
 };
-async function selDo(op) {
-  const ids = [...SEL];
+// only: seçim yerine belirli konular (sağ tık menüsü)
+async function selDo(op, only) {
+  const ids = only || [...SEL];
   if (!ids.length) return;
-  const snapshot = S.threads.filter(t => SEL.has(t.id)).map(t => ({ ...t, labelIds: [...t.labelIds] }));
-  selClear();
+  const snapshot = S.threads.filter(t => ids.includes(t.id)).map(t => ({ ...t, labelIds: [...t.labelIds] }));
+  if (!only) selClear();
   try {
     if (op === 'trash' || op === 'untrash') {
       await pmap(ids, 5, id => op === 'trash' ? Gmail.trashThread(id) : Gmail.untrashThread(id));
@@ -92,7 +93,7 @@ async function selDo(op) {
       if (ids.includes(S.threadId)) closeReader(); else renderList();
       refreshCountsSoon();
       if (op === 'untrash') return toast(`${ids.length} konu gelen kutusuna geri alındı`);
-      return toast(`${ids.length} konu çöp kutusuna taşındı`, [['Geri al', async () => {
+      return toast(ids.length === 1 ? 'Çöp kutusuna taşındı' : `${ids.length} konu çöp kutusuna taşındı`, [['Geri al', async () => {
         await pmap(ids, 5, id => Gmail.untrashThread(id));
         selRestore(snapshot); toast('Geri alındı');
       }]], 8000);
@@ -102,7 +103,7 @@ async function selDo(op) {
     ids.forEach(id => markLocalQuiet(id, o.add, o.rm));
     if (o.drop?.()) { S.threads = S.threads.filter(t => !ids.includes(t.id)); if (ids.includes(S.threadId)) closeReader(); }
     renderList(); renderSidebar(); refreshCountsSoon();
-    toast(o.msg(ids.length), [['Geri al', async () => {
+    toast(ids.length === 1 && o.one ? o.one : o.msg(ids.length), [['Geri al', async () => {
       await pmap(ids, 5, id => Gmail.modifyThread(id, o.undo.add, o.undo.rm));
       if (o.drop?.()) selRestore(snapshot); else { ids.forEach(id => markLocalQuiet(id, o.undo.add, o.undo.rm)); renderList(); }
       refreshCountsSoon(); toast('Geri alındı');
@@ -123,8 +124,10 @@ function selRestore(snapshot) {
 }
 
 /* Toplu etiketleme: hepsinde olan ✓, bazılarında olan – (dokunulmaz) */
-function openSelLabels() {
-  const ts = S.threads.filter(t => SEL.has(t.id));
+let selLabelIds = null;
+function openSelLabels(only) {
+  selLabelIds = only || [...SEL];
+  const ts = S.threads.filter(t => selLabelIds.includes(t.id));
   if (!ts.length) return;
   const state = id => { const n = ts.filter(t => t.labelIds.includes(id)).length; return n === ts.length ? 'all' : n ? 'some' : 'none'; };
   $('#modal').innerHTML = `
@@ -132,7 +135,7 @@ function openSelLabels() {
     <div class="sheet picker">
       <header class="sheet-head">
         <button type="button" class="icon-btn" data-action="close-modal">${IC.close}</button>
-        <h3>${ts.length} konuyu etiketle</h3>
+        <h3>${ts.length === 1 ? 'Etiketle' : ts.length + ' konuyu etiketle'}</h3>
         <button class="btn primary" data-action="sel-apply-labels">Uygula</button>
       </header>
       <div class="pick-list">
@@ -148,7 +151,7 @@ function openSelLabels() {
   document.querySelectorAll('.pick input').forEach(i => i.addEventListener('change', () => { i.dataset.touched = '1'; i.closest('.pick').classList.remove('some'); }));
 }
 async function applySelLabels() {
-  const ids = [...SEL];
+  const ids = selLabelIds || [...SEL];
   const add = [], rm = [];
   document.querySelectorAll('.pick input').forEach(i => {
     if (i.dataset.st === 'some' && !i.dataset.touched) return;
@@ -161,8 +164,9 @@ async function applySelLabels() {
     await pmap(ids, 5, id => Gmail.modifyThread(id, add, rm));
     ids.forEach(id => markLocalQuiet(id, add, rm));
     if (rm.includes(S.labelId)) S.threads = S.threads.filter(t => !ids.includes(t.id));
-    selClear(); renderList(); renderSidebar(); refreshCountsSoon();
-    toast(`${ids.length} konunun etiketleri güncellendi`);
+    if (ids.every(id => SEL.has(id))) selClear();
+    renderList(); renderSidebar(); refreshCountsSoon();
+    toast(ids.length === 1 ? 'Etiketler güncellendi' : `${ids.length} konunun etiketleri güncellendi`);
   } catch (e) { if (!(e instanceof AuthError)) toast('Etiket değiştirilemedi: ' + e.message); }
 }
 

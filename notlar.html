@@ -1,19 +1,17 @@
 <!doctype html>
-<html lang="tr" class="yon-html">
+<html lang="tr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Mail Yönetici</title>
-<meta name="robots" content="noindex">
-<meta name="theme-color" content="#e2e5e9" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#17191c" media="(prefers-color-scheme: dark)">
-<link rel="manifest" href="yonetici.webmanifest?v=2">
-<link rel="icon" href="yonetici-192.png?v=2">
-<link rel="apple-touch-icon" href="yonetici-apple.png?v=2">
+<title>Notlar</title>
+<meta name="theme-color" content="#26282c">
+<link rel="manifest" href="notlar.webmanifest?v=1">
+<link rel="icon" href="notlar-192.png?v=1">
+<link rel="apple-touch-icon" href="notlar-apple.png?v=1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Yönetici">
+<meta name="apple-mobile-web-app-title" content="Notlar">
 <link rel="stylesheet" href="style.css">
 <link rel="stylesheet" href="cam.css" id="css-cam">
 <link rel="stylesheet" href="koyu.css" id="css-koyu" media="not all">
@@ -27,10 +25,17 @@ function applyTheme(t) {
 try { applyTheme(JSON.parse(localStorage.getItem('theme')) || 'light'); } catch (e) { applyTheme('light'); }
 </script>
 </head>
-<body class="yonetici">
+<body class="notes-app">
 <div id="app"></div>
+<div id="modal"></div>
 <div id="toast"></div>
 <script src="config.js"></script>
-<script src="yonetici.js"></script>
+<script src="mock.js"></script>
+<script src="app.js"></script>
+<script src="autocorrect.js"></script>
+<script src="access.js"></script>
+<script src="feedback.js"></script>
+<script src="about.js"></script>
+<script src="notes-app.js"></script>
 </body>
 </html>

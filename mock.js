@@ -17,7 +17,7 @@
   let seq = 0;
   const T = (label, from, subject, text, ago, opts = {}) => ({
     id: 't' + (++seq), label, from, subject, text, date: now - ago, unread: !!opts.unread,
-    starred: !!opts.starred, inbox: opts.inbox !== false, html: opts.html, ics: !!opts.ics, auth: opts.auth || ''
+    starred: !!opts.starred, inbox: opts.inbox !== false, html: opts.html, ics: !!opts.ics, auth: opts.auth || '', att: opts.att
   });
   const raw = [
     T('L20', 'Trendyol <kampanya@trendyol.com>', 'Siparişin kargoya verildi 📦', 'Merhaba, 4 Ekim tarihli siparişin kargoya verildi. Takip numarası: 7281 0034 9921.', 1.2 * H, { unread: true, html: '<div style="font-family:Arial;max-width:560px;margin:auto"><div style="background:#f27a1a;color:#fff;padding:18px 20px;font-size:20px;font-weight:bold">trendyol</div><div style="padding:20px"><h2 style="margin-top:0">Siparişin yolda!</h2><p>Merhaba, 4 Ekim tarihli siparişin kargoya verildi.</p><table style="width:100%;border-collapse:collapse;margin:16px 0"><tr><td style="padding:8px;border-bottom:1px solid #eee">Kargo firması</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right"><b>Trendyol Express</b></td></tr><tr><td style="padding:8px">Takip no</td><td style="padding:8px;text-align:right"><b>7281 0034 9921</b></td></tr></table><a href="https://example.com" style="display:inline-block;background:#f27a1a;color:#fff;padding:12px 22px;border-radius:6px;text-decoration:none">Kargomu takip et</a></div><img src="https://euromsg.trendyol.com/open.gif?u=8f2a" width="1" height="1" alt=""><img src="https://trendyol.list-manage.com/track/open.php?u=abc&amp;id=1" style="display:none"><img src="https://pixel.insider.com/e/o/xyz" width="0" height="0"></div>' }),
@@ -52,6 +52,11 @@
   raw.push(T('L13', 'Ben <snn.erdogan98@gmail.com>', 'Alışveriş listesi', 'Süt, yumurta, kahve, deterjan, pil (AA)', 2 * D, { inbox: false }));
   raw.push(T('L13', 'Ben <snn.erdogan98@gmail.com>', 'Tatil fikirleri', 'Kaş, Kalkan, Bozcaada. Haziran başı uygun. Otel yerine ev kiralamayı düşün.', 6 * D, { inbox: false }));
   raw.push(T(null, 'Ali Veli <ali.veli@ornekfirma.com>', 'Davet: Proje toplantısı', 'Proje toplantısına davetlisiniz. Gündem: yeni sürüm planı.', 5 * H, { unread: true, ics: true }));
+  raw.push(T(null, 'Ayşe Kaya <ayse.kaya@ornekajans.com>', 'Web sitesi yenileme teklifi', 'Merhaba Sinan Bey,\n\nGeçen hafta konuştuğumuz web sitesi yenileme işi için teklifimizi ekte Word dosyası olarak gönderiyorum. Uygun görürseniz sözleşmeyi hazırlayalım.\n\nİyi çalışmalar,\nAyşe Kaya\nÖrnek Ajans', 2.5 * H, { unread: true,
+    att: { filename: 'Web_Sitesi_Teklifi.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', size: 38051, url: 'demo/teklif.docx' } }));
+  raw.push(T(null, 'Can Demir <can.demir@ornekfirma.com>', 'Ekim bütçesi ve proje sunumu', 'Selam Sinan,\n\nEkim bütçesinin son halini ve yarınki toplantı için sunumu ekledim. Bir göz atarsan sevinirim.\n\nCan', 3.2 * H, { unread: true,
+    att: [{ filename: 'Ekim_Butcesi.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', size: 8205, url: 'demo/butce.xlsx' },
+          { filename: 'Proje_Sunumu.pptx', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', size: 30366, url: 'demo/sunum.pptx' }] }));
   // Taramada çakışma göstermek için: Garanti ve Annem Garanti aynı adresten
   raw.push(T('L8', 'Garanti BBVA <bilgilendirme@garantibbva.com.tr>', 'Eylül ekstreniz – Ayşe Erdoğan', 'Sayın Ayşe Erdoğan, Eylül dönemi ekstreniz hazırlanmıştır.', 30 * D, { inbox: false }));
   raw.push(T('L7', 'Garanti BBVA <bilgilendirme@garantibbva.com.tr>', 'Bonus puan kazandınız', 'Sayın Sinan Erdoğan, 120 bonus kazandınız.', 20 * D, { inbox: false }));
@@ -131,7 +136,7 @@
         subject: t.msg.subject, date: t.msg.date, authResults: t.msg.auth || '', messageId: '<' + id + '@demo>', references: '', snippet: t.msg.text,
         ics: t.msg.ics ? icsFor() : '', icsAtt: null,
         html: t.msg.html || '', text: t.msg.text, inline: [], noteUuid: t.msg.uuid || '', noteCreated: t.msg.created || '',
-        attachments: /ekstre|fatura|özet/i.test(t.msg.subject) ? [{ filename: 'ekstre_ekim_2026.pdf', mimeType: 'application/pdf', size: 184320, data: btoa('demo') }] : []
+        attachments: t.msg.att ? [].concat(t.msg.att) : /ekstre|fatura|özet/i.test(t.msg.subject) ? [{ filename: 'ekstre_ekim_2026.pdf', mimeType: 'application/pdf', size: 184320, data: btoa('demo') }] : []
       }] });
     },
     modifyThread: (id, add = [], remove = []) => {

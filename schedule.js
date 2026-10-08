@@ -193,7 +193,7 @@ function renderSched() {
 }
 
 /* Google zamanlayıcısı kurulumu */
-const SCHED_SCRIPT = String.raw`// Mail — zamanlayıcı (sürüm 4)
+const SCHED_SCRIPT = String.raw`// Mail — zamanlayıcı (sürüm 5)
 // Her dakika çalışır:
 //  1) "X-Mail-Scheduled" zamanı gelmiş taslakları gönderir,
 //  2) zamanı gelen ertelenmiş mailleri gelen kutusuna geri getirir.
@@ -284,7 +284,10 @@ function doPost(istek) {
   var lock = LockService.getScriptLock(); lock.waitLock(10000);
   try {
     var b = JSON.parse(istek.postData.contents);
-    if (!b.token || girenKim(b.token) !== Session.getEffectiveUser().getEmail().toLowerCase()) return cevap({ hata: 'yetki' });
+    var kim = b.token ? girenKim(b.token) : '';
+    if (b.islem === 'geri-bildirim') return geriBildirimAl(b, kim);
+    if (b.islem === 'merhaba') return kullaniciKaydet(b, kim);
+    if (!kim || kim !== Session.getEffectiveUser().getEmail().toLowerCase()) return cevap({ hata: 'yetki' });
     var y = JSON.parse(OZ.getProperty('yonetici') || '{}'), simdi = Date.now();
     if (y.kilit && y.kilit > simdi) return cevap({ hata: 'kilit', dakika: Math.ceil((y.kilit - simdi) / 60000) });
     if (b.islem === 'durum') return cevap({ sifreVar: !!y.ozet });
@@ -314,9 +317,61 @@ function doPost(istek) {
     }
     if (b.islem === 'sil') e[L] = e[L].filter(function (x) { return x.h !== b.h; });
     if (/^(mod|ekle|sil)$/.test(b.islem)) OZ.setProperty('erisim', JSON.stringify(e));
+    if (/^gb-/.test(b.islem)) return cevap({ gb: geriBildirimler(b) });
+    if (/^ku-/.test(b.islem)) return cevap({ ku: kullanicilar(b) });
     return cevap(e);
   } catch (err) { return cevap({ hata: String(err) }); }
   finally { lock.releaseLock(); }
+}
+// ── Programı kullananlar ──
+// Program açılınca kullanıcı kendini bildirir (Google girişiyle doğrulanır): e-posta, son giriş, cihaz, sürüm.
+// Sadece yönetici (Google girişi + şifre) görebilir ve listeden silebilir.
+function kullaniciKaydet(b, kim) {
+  if (!kim) return cevap({ hata: 'yetki' });
+  var k = 'ku:' + kim, eski = JSON.parse(OZ.getProperty(k) || 'null'), t = Date.now();
+  var u = eski || { e: kim, ilk: t, sayi: 0 };
+  u.son = t; u.sayi = (u.sayi || 0) + 1;
+  u.ad = String(b.ad || u.ad || '').slice(0, 60);
+  u.cihaz = String(b.cihaz || '').slice(0, 80); u.surum = String(b.surum || '').slice(0, 12);
+  OZ.setProperty(k, JSON.stringify(u));
+  return cevap({ tamam: 1 });
+}
+function kullanicilar(b) {
+  if (b.islem === 'ku-sil' && /^ku:/.test(b.id || '')) OZ.deleteProperty(b.id);
+  var tum = OZ.getProperties();
+  return Object.keys(tum).filter(function (k) { return k.indexOf('ku:') === 0; })
+    .map(function (k) { var u = JSON.parse(tum[k]); u.id = k; return u; })
+    .sort(function (x, y) { return y.son - x.son; });
+}
+
+// ── Geri bildirim ──
+// Programı kullanan herkes (Google girişiyle kim olduğu doğrulanarak) gönderebilir; günde en fazla 10.
+// Sadece yönetici (Google girişi + şifre) okuyabilir, okundu işaretleyebilir, silebilir.
+function geriBildirimAl(b, kim) {
+  if (!kim) return cevap({ hata: 'yetki' });
+  var metin = String(b.metin || '').trim().slice(0, 3000);
+  if (metin.length < 3) return cevap({ hata: 'bos' });
+  var tum = OZ.getProperties(), gun = Date.now() - 86400000, say = 0;
+  Object.keys(tum).forEach(function (k) {
+    if (k.indexOf('gb:') !== 0) return;
+    var g = JSON.parse(tum[k]); if (g.kim === kim && g.t > gun) say++;
+  });
+  if (say >= 10) return cevap({ hata: 'cok' });
+  var t = Date.now();
+  OZ.setProperty('gb:' + t + ':' + Math.random().toString(36).slice(2, 6), JSON.stringify({
+    t: t, kim: kim, tur: String(b.tur || 'diger').slice(0, 10), metin: metin, bilgi: String(b.bilgi || '').slice(0, 500), okundu: 0 }));
+  return cevap({ tamam: 1 });
+}
+function geriBildirimler(b) {
+  var tum = OZ.getProperties();
+  if (b.islem === 'gb-sil' && tum[b.id] && b.id.indexOf('gb:') === 0) { OZ.deleteProperty(b.id); delete tum[b.id]; }
+  if (b.islem === 'gb-oku') Object.keys(tum).forEach(function (k) {
+    if (k.indexOf('gb:') !== 0 || (b.id && k !== b.id)) return;
+    var g = JSON.parse(tum[k]); if (!g.okundu) { g.okundu = 1; OZ.setProperty(k, JSON.stringify(g)); tum[k] = JSON.stringify(g); }
+  });
+  return Object.keys(tum).filter(function (k) { return k.indexOf('gb:') === 0; })
+    .map(function (k) { var g = JSON.parse(tum[k]); g.id = k; return g; })
+    .sort(function (x, y) { return y.t - x.t; });
 }
 // Yönetici şifresini unutursan bunu bir kez çalıştır; programda yeni şifre belirlersin.
 function yoneticiSifresiniSifirla() {
@@ -332,7 +387,7 @@ function kurulum() {
   console.log('Kurulum tamam. Zamanlanmış postalar ve ertelenen mailler artık otomatik işlenecek.');
 }
 `;
-const SCHED_SCRIPT_VER = 4;
+const SCHED_SCRIPT_VER = 5;
 
 function openSchedSetup() {
   const done = !!store.get('schedScript');
@@ -344,7 +399,7 @@ function openSchedSetup() {
         <h3>Google zamanlayıcısı</h3>
       </header>
       <div class="set-body">
-        ${done && store.get('schedScriptVer', 1) < SCHED_SCRIPT_VER ? `<div class="card upd-card"><b>Güncelleme:</b> script.google.com'da <b>Mail Zamanlayıcı</b> projesini aç, eski kodu tamamen silip aşağıdaki yeni kodu yapıştır, <b>Ctrl+S</b> ile kaydet. Sonra bir kez <b>kurulum</b>'u seçip <b>▷ Çalıştır</b>'a bas ve istenen izinleri onayla. Bitince en alttaki düğmeye bas.</div>` : ''}
+        ${done && store.get('schedScriptVer', 1) < SCHED_SCRIPT_VER ? `<div class="card upd-card"><b>Güncelleme:</b> script.google.com'da <b>Mail Zamanlayıcı</b> projesini aç, eski kodu tamamen silip aşağıdaki yeni kodu yapıştır, <b>Ctrl+S</b> ile kaydet. Sonra bir kez <b>kurulum</b>'u seçip <b>▷ Çalıştır</b>'a bas ve istenen izinleri onayla. <b>Mail Yönetici'yi kurduysan</b> son olarak sağ üstte <b>Dağıt → Dağıtımları yönet → ✎ (kalem) → Sürüm: Yeni sürüm → Dağıt</b> de (adres değişmez). Bitince en alttaki düğmeye bas.</div>` : ''}
         <p class="muted">Bir kerelik kurulum, 5 dakika. Google hesabında senin adına küçük bir zamanlayıcı çalışır; ücretsizdir ve sadece senin taslaklarına bakar.</p>
         <ol class="steps">
           <li><b>Yeni proje aç.</b> <a href="https://script.google.com/home/projects/create" target="_blank" rel="noopener">script.google.com</a> adresini aç (Gmail hesabınla). Sol üstteki "Adsız proje" yazısına tıklayıp adını <b>Mail Zamanlayıcı</b> yap.</li>

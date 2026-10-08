@@ -23,7 +23,14 @@ const IC = {
   user: svg('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c1-3.6 3.8-5.5 7-5.5s6 1.9 7 5.5"/>'),
   logout: svg('<path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h10"/>'),
   block: svg('<circle cx="12" cy="12" r="8.5"/><path d="m6 6 12 12"/>'),
-  down: svg('<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>')
+  more: svg('<circle cx="5.5" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="18.5" cy="12" r="1.4" fill="currentColor"/>'),
+  close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
+  refresh: svg('<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>'),
+  down: svg('<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>'),
+  chat: svg('<path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/>'),
+  reply: svg('<path d="M10 8 5 12.5 10 17M5 12.5h9a5 5 0 0 1 5 5V19"/>'),
+  trash: svg('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'),
+  check: svg('<path d="m5 12.5 4.5 4.5L19 7.5"/>')
 };
 
 /* ───── Google girişi (sadece e-posta adresi istenir; maillere erişim yok) ───── */
@@ -70,7 +77,18 @@ let pw = null;          // şifre sadece bellekte
 let data = null;        // { mode, allow:[{h,ad}], block:[{h,ad}] }
 class SrvError extends Error { constructor(j) { super(j.hata); this.j = j; } }
 
-const demoSrv = { sifre: null, hata: 0, e: { mode: 'off', allow: [{ h: 'c0ffee'.padEnd(64, '1'), ad: 'Abim' }], block: [] } };
+const demoSrv = { sifre: null, hata: 0, e: { mode: 'off', allow: [{ h: 'c0ffee'.padEnd(64, '1'), ad: 'Abim' }], block: [] },
+  ku: [
+    { id: 'ku:snn.erdogan98@gmail.com', e: 'snn.erdogan98@gmail.com', ad: 'Sinan Erdoğan', son: Date.now() - 6e4, ilk: Date.now() - 864e5 * 5, sayi: 40, cihaz: 'iPhone (iOS 18.0) · Ana ekran uygulaması', surum: 'V0.6' },
+    { id: 'ku:mehmet.erdogan@gmail.com', e: 'mehmet.erdogan@gmail.com', ad: 'Mehmet Erdoğan', son: Date.now() - 36e5 * 3, ilk: Date.now() - 864e5 * 2, sayi: 6, cihaz: 'Windows · Windows programı', surum: 'V0.6' },
+    { id: 'ku:ali.veli@ornekfirma.com', e: 'ali.veli@ornekfirma.com', ad: 'Ali Veli', son: Date.now() - 864e5, ilk: Date.now() - 864e5 * 1.5, sayi: 3, cihaz: 'Android (sürüm 14) · Chrome', surum: 'V0.6' },
+    { id: 'ku:yabanci.kisi@hotmail.com', e: 'yabanci.kisi@hotmail.com', ad: '', son: Date.now() - 864e5 * 4, ilk: Date.now() - 864e5 * 4, sayi: 1, cihaz: 'Windows · Edge', surum: 'V0.6' }
+  ],
+  gb: [
+    { id: 'gb:3', t: Date.now() - 36e5 * 2, kim: 'mehmet.erdogan@gmail.com', tur: 'hata', okundu: 0, metin: 'Telefonda bir maili etikete taşıyınca liste hemen yenilenmiyor, aşağı çekince düzeliyor.', bilgi: 'Sürüm: V0.6\nCihaz: iPhone (iOS 18.0)\nKullanım: Ana ekran uygulaması\nGörünüm: Koyu\nEkran: 390×844' },
+    { id: 'gb:2', t: Date.now() - 864e5, kim: 'ali.veli@ornekfirma.com', tur: 'oneri', okundu: 0, metin: 'Sağ tık menüsüne "Yazdır" da eklenebilir mi?', bilgi: 'Sürüm: V0.6\nCihaz: Windows\nKullanım: Windows programı\nGörünüm: Cam\nEkran: 1536×864' },
+    { id: 'gb:1', t: Date.now() - 864e5 * 3, kim: 'ayse.erdogan@gmail.com', tur: 'diger', okundu: 1, metin: 'Program çok güzel olmuş, eline sağlık :)', bilgi: 'Sürüm: V0.5\nCihaz: Android (sürüm 14)\nKullanım: Chrome\nGörünüm: Cam\nEkran: 412×915' }
+  ] };
 async function demoPost(b) {
   await sleep(250);
   const d = demoSrv, L = b.liste === 'block' ? 'block' : 'allow';
@@ -82,6 +100,11 @@ async function demoPost(b) {
   if (b.islem === 'mod') d.e.mode = b.mode;
   if (b.islem === 'ekle') { d.e[L] = d.e[L].filter(x => x.h !== b.h); d.e[L].push({ h: b.h, ad: b.ad }); }
   if (b.islem === 'sil') d.e[L] = d.e[L].filter(x => x.h !== b.h);
+  if (b.islem === 'gb-sil') d.gb = d.gb.filter(g => g.id !== b.id);
+  if (b.islem === 'gb-oku') d.gb.forEach(g => { if (!b.id || g.id === b.id) g.okundu = 1; });
+  if (/^gb-/.test(b.islem)) return { gb: JSON.parse(JSON.stringify(d.gb)) };
+  if (b.islem === 'ku-sil') d.ku = d.ku.filter(u => u.id !== b.id);
+  if (/^ku-/.test(b.islem)) return { ku: JSON.parse(JSON.stringify(d.ku)) };
   return JSON.parse(JSON.stringify(d.e));
 }
 async function post(body) {
@@ -153,8 +176,7 @@ function showUnlock(msg) {
     <form class="yon-form" data-form="unlock">
       <input type="password" id="pw" placeholder="Yönetici şifresi" autocomplete="current-password" required>
       <button class="btn primary">Kilidi aç</button>
-    </form>
-    <p class="muted sm">Şifreni unuttuysan: script.google.com'da Mail Zamanlayıcı'yı aç, üstten <b>yoneticiSifresiniSifirla</b>'yı seçip ▷ Çalıştır'a bas. Sonra burada yeni şifre belirlersin.</p>`);
+    </form>`);
   $('#pw').focus();
 }
 function showBusy(t = 'Yükleniyor…') { screen(`${brand()}<p class="muted">${t}</p>`); }
@@ -166,26 +188,141 @@ function panel(body, tools = true) {
       <button class="icon-btn" data-action="logout" title="Çıkış yap">${IC.logout}</button></div>
     <div class="set-body">${body}</div></div></div>`;
 }
-let showPwChange = false;
-function render() {
-  const mode = data.mode || 'off', list = mode === 'block' ? 'block' : 'allow', rows = data[list] || [];
-  $('#app').innerHTML = panel(`
-    ${!LIVE() && !DEMO ? `<div class="card upd-card"><b>Son adım:</b> Liste servisi çalışıyor ama Mail programı adresi henüz bilmiyor; seçimlerin şu an kimseyi etkilemez. <b>config.js</b>'i indirip GitHub'a (main) yükle.<div class="ph-actions" style="margin-top:8px"><button class="btn" data-action="config">${IC.down} config.js'i indir</button></div></div>` : ''}
-    <section><h4>Kimler kullanabilir?</h4>
-      <div class="seg yon-seg">${[['off', 'Herkes'], ['allow', 'Sadece izinliler'], ['block', 'Engellenenler hariç']].map(([m, t]) => `<button class="${mode === m ? 'on' : ''}" data-action="mode" data-m="${m}">${t}</button>`).join('')}</div>
-      <p class="muted sm">${mode === 'off' ? 'Kapalı: programı kuran herkes kullanabilir.' : mode === 'allow' ? 'Sadece aşağıdaki listedekiler kullanabilir.' : 'Herkes kullanabilir; aşağıdakiler hariç.'} Sen her zaman kullanabilirsin.</p>
-    </section>
-    ${mode === 'off' ? '' : `
-    <section><h4>${list === 'allow' ? 'İzinli kullanıcılar' : 'Engellenen kullanıcılar'} · ${rows.length}</h4>
-      ${rows.length ? `<div class="acc-list">${rows.map(r => `<div class="acc-row"><span>${IC.user}<b>${esc(r.ad || 'Not yok')}</b><small>${esc(r.h.slice(0, 8))}…</small></span><button class="btn sm" data-action="del" data-h="${r.h}" data-l="${list}">${list === 'allow' ? 'Çıkar' : 'Engeli kaldır'}</button></div>`).join('')}</div>` : `<p class="muted sm">Liste boş.${list === 'allow' ? ' Şu an programı sadece sen kullanabilirsin.' : ''}</p>`}
-      <form class="acc-add" data-form="add" data-l="${list}">
+/* ───── Programı kullananlar ───── */
+let ku = null, kuHash = {};          // ku: [{id,e,ad,son,ilk,sayi,cihaz,surum}] | 'eski'
+async function loadKu() {
+  try {
+    const j = await post({ islem: 'ku-liste' });
+    ku = Array.isArray(j.ku) ? j.ku : 'eski';
+    if (Array.isArray(ku)) for (const u of ku) if (!kuHash[u.e]) kuHash[u.e] = await accHash(u.e);
+  } catch { ku = ku || 'eski'; }
+}
+const inList = (h, l) => (data?.[l] || []).some(x => x.h === h);
+function kuStatus(u) {
+  const h = kuHash[u.e], owner = h === CFG.OWNER_HASH;
+  const w = inList(h, 'allow'), k = inList(h, 'block'), m = data?.mode || 'off';
+  const blocked = !owner && ((m === 'allow' && !w) || (m === 'block' && k));
+  return { h, owner, w, k, blocked };
+}
+function kuRow(u) {
+  const st = kuStatus(u);
+  const name = u.ad && u.ad.toLowerCase() !== u.e ? u.ad : '';
+  return `<div class="ku-row ${st.blocked ? 'blocked' : ''}" data-ku="${esc(u.id)}">
+    <span class="ku-av">${esc((name || u.e).trim().charAt(0).toLocaleUpperCase('tr-TR'))}</span>
+    <span class="ku-txt"><b>${esc(name || u.e)}</b>${name ? `<small>${esc(u.e)}</small>` : ''}
+      <small class="ku-meta">${esc(gbWhen(u.son))}${u.cihaz ? ' · ' + esc(u.cihaz) : ''}${u.surum ? ' · ' + esc(u.surum) : ''}</small>
+      <span class="ku-chips">${st.owner ? '<i class="ku-chip me">Sen</i>' : ''}${st.w ? '<i class="ku-chip w">Beyaz liste</i>' : ''}${st.k ? '<i class="ku-chip k">Kara liste</i>' : ''}${st.blocked ? '<i class="ku-chip no">Giremiyor</i>' : ''}</span></span>
+    ${st.owner ? '' : `<button class="icon-btn ku-more" data-action="ku-menu" data-ku="${esc(u.id)}" title="Seçenekler">${IC.more}</button>`}
+  </div>`;
+}
+function kuSection(mode) {
+  if (ku === 'eski') return `<section><h4>Programı kullananlar</h4><div class="card upd-card"><b>Bir adım kaldı:</b> Programı kullananların burada listelenmesi için zamanlayıcıyı <b>sürüm 5</b>'e güncelle (Mail → Ayarlar → Zamanlanmış gönderim → Güncelle), sonra script.google.com'da <b>Dağıt → Dağıtımları yönet → ✎ → Sürüm: Yeni sürüm → Dağıt</b>.</div>${listOnly()}</section>`;
+  if (!Array.isArray(ku)) return listOnly(true);
+  return `<section><h4>Programı kullananlar · ${ku.length}</h4>
+    ${ku.length ? `<div class="ku-list">${ku.map(kuRow).join('')}</div>` : '<p class="muted sm">Henüz kimse yok. Programı açan herkes (V0.6 ve sonrası) burada görünür.</p>'}
+    <p class="muted sm">En son ne zaman açtığı, hangi cihazdan ve hangi sürümle girdiği görünür. Bilgisayarda satıra sağ tıkla, telefonda ⋯'ye dokun.</p>
+  </section>${listOnly(true)}`;
+}
+// Listelerde olup programı hiç açmamış (ya da kaydı silinmiş) adresler + elle ekleme
+function listOnly(own) {
+  const known = new Set(Object.values(kuHash));
+  const rows = [...(data?.allow || []).map(x => ({ ...x, l: 'allow' })), ...(data?.block || []).map(x => ({ ...x, l: 'block' }))].filter(x => !known.has(x.h));
+  const inner = `${rows.length ? `<div class="acc-list">${rows.map(r => `<div class="acc-row"><span>${IC.user}<b>${esc(r.ad || 'Not yok')}</b><i class="ku-chip ${r.l === 'allow' ? 'w' : 'k'}">${r.l === 'allow' ? 'Beyaz liste' : 'Kara liste'}</i></span><button class="btn sm" data-action="del" data-h="${r.h}" data-l="${r.l}">Çıkar</button></div>`).join('')}</div>` : ''}
+    <details class="ku-manual" ${rows.length ? '' : ''}><summary>Elle ekle (programı henüz açmamış biri için)</summary>
+      <form class="acc-add" data-form="add2">
         <input id="accEmail" type="email" placeholder="ornek@gmail.com" required>
         <input id="accNote" placeholder="Not (ör. Abim)">
-        <button class="btn primary">${list === 'allow' ? 'İzin ver' : 'Engelle'}</button>
+        <div class="ph-actions"><button class="btn primary" name="l" value="allow">Beyaz listeye</button><button class="btn" name="l" value="block">Kara listeye</button></div>
       </form>
-      <p class="muted sm">Adresler listede açık yazılmaz, şifrelenmiş halleri saklanır. Notu sadece sen görürsün.</p>
-    </section>`}
-    <section><h4>Güvenlik</h4>
+      <p class="muted sm">Elle eklenen adresler listede açık yazılmaz, şifrelenmiş halleri saklanır; notu sadece sen görürsün.</p>
+    </details>`;
+  return own ? `<section><h4>Listede olup henüz görünmeyenler${rows.length ? ' · ' + rows.length : ''}</h4>${inner}</section>` : inner;
+}
+// Bir listeye al (diğerinden çıkararak) / listeden çıkar
+async function kuSet(h, ad, which) {
+  const other = which === 'allow' ? 'block' : 'allow';
+  return change(async () => {
+    if (inList(h, other)) await post({ islem: 'sil', liste: other, h });
+    return post({ islem: 'ekle', liste: which, h, ad });
+  }, which === 'allow' ? 'Beyaz listeye alındı' : 'Kara listeye alındı');
+}
+function kuMenu(id, x, y) {
+  document.querySelector('.ku-pop')?.remove();
+  const u = Array.isArray(ku) && ku.find(z => z.id === id); if (!u) return;
+  const st = kuStatus(u); if (st.owner) return;
+  const it = (a, ic, t, extra = '') => `<button class="ctx-item" data-ku-act="${a}" ${extra}>${ic}<span>${t}</span></button>`;
+  const m = document.createElement('div');
+  m.className = 'ctx-menu sched-pop ku-pop';
+  m.innerHTML = `<div class="ctx-title">${esc(u.ad || u.e)}</div>
+    ${st.w ? it('w-out', IC.close, 'Beyaz listeden çıkar') : it('w-in', IC.check, 'Beyaz listeye al')}
+    ${st.k ? it('k-out', IC.close, 'Kara listeden çıkar') : it('k-in', IC.block, 'Kara listeye al', 'data-danger')}
+    <div class="ctx-sep"></div>
+    ${it('forget', IC.trash, 'Bu listeden kaldır')}`;
+  document.body.appendChild(m);
+  m.style.left = Math.max(8, Math.min(x, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.top = Math.max(8, Math.min(y, innerHeight - m.offsetHeight - 8)) + 'px';
+  m.addEventListener('click', e => {
+    const b = e.target.closest('[data-ku-act]'); if (!b) return;
+    m.remove();
+    const a = b.dataset.kuAct, ad = u.ad || u.e.replace(/@.*/, '');
+    if (a === 'w-in') kuSet(st.h, ad, 'allow');
+    if (a === 'k-in') kuSet(st.h, ad, 'block');
+    if (a === 'w-out') change(() => post({ islem: 'sil', liste: 'allow', h: st.h }), 'Beyaz listeden çıkarıldı');
+    if (a === 'k-out') change(() => post({ islem: 'sil', liste: 'block', h: st.h }), 'Kara listeden çıkarıldı');
+    if (a === 'forget' && confirm(`${u.e} bu listeden kaldırılsın mı? (Programı tekrar açarsa yeniden görünür. Beyaz/kara listedeki yeri değişmez.)`))
+      (async () => { try { const j = await post({ islem: 'ku-sil', id: u.id }); if (Array.isArray(j.ku)) ku = j.ku; toast('Kaldırıldı'); } catch (e) { toast(errText(e)); } render(); })();
+  });
+}
+document.addEventListener('contextmenu', e => {
+  const r = e.target.closest?.('.ku-row[data-ku]'); if (!r) return;
+  e.preventDefault(); kuMenu(r.dataset.ku, e.clientX, e.clientY);
+});
+document.addEventListener('mousedown', e => { if (!e.target.closest?.('.ku-pop')) document.querySelector('.ku-pop')?.remove(); }, true);
+addEventListener('scroll', () => document.querySelector('.ku-pop')?.remove(), true);
+let showPwChange = false;
+let yonTab = store.get('yonTab', 'users');
+let gbFilter = 'all';
+const GB_TUR = { hata: ['Hata', 'h'], oneri: ['Öneri', 'o'], diger: ['Diğer', 'd'] };
+const gbWhen = t => { const d = new Date(t), now = new Date(), hm = d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
+  const days = Math.round((new Date(now.toDateString()) - new Date(d.toDateString())) / 864e5);
+  return days === 0 ? 'Bugün ' + hm : days === 1 ? 'Dün ' + hm : d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long' }) + ' ' + hm; };
+function gbSection() {
+  if (gb === 'eski') return `<section><h4>Geri bildirimler</h4><div class="card upd-card"><b>Bir adım kaldı:</b> Kullanıcıların geri bildirimlerinin buraya gelmesi için zamanlayıcıyı <b>sürüm 5</b>'e güncelle (Mail → Ayarlar → Zamanlanmış gönderim → Güncelle), sonra script.google.com'da <b>Dağıt → Dağıtımları yönet → ✎ → Sürüm: Yeni sürüm → Dağıt</b>. Adres değişmez.</div></section>`;
+  if (!Array.isArray(gb)) return '';
+  const yeni = gb.filter(g => !g.okundu).length;
+  const cnt = k => k === 'all' ? gb.length : k === 'new' ? yeni : gb.filter(g => g.tur === k).length;
+  const shown = gb.filter(g => gbFilter === 'all' || (gbFilter === 'new' ? !g.okundu : g.tur === gbFilter));
+  const filters = [['all', 'Tümü'], ['new', 'Yeni'], ['hata', 'Hata'], ['oneri', 'Öneri'], ['diger', 'Diğer']];
+  return `<section><h4 class="gb-head">Geri bildirimler · ${gb.length}${yeni ? ` <span class="gb-new">${yeni} yeni</span>` : ''}
+      <button class="icon-btn gb-refresh" data-action="gb-refresh" title="Yenile">${IC.refresh}</button></h4>
+    ${gb.length ? `<div class="gb-filters">${filters.map(([k, t]) => `<button class="${gbFilter === k ? 'on' : ''}" data-action="gb-filter" data-f="${k}">${t}<i>${cnt(k)}</i></button>`).join('')}</div>` : ''}
+    ${gb.length && !shown.length ? `<p class="muted sm">${gbFilter === 'new' ? 'Okunmamış geri bildirim yok.' : 'Bu türde geri bildirim yok.'}</p>` : ''}
+    ${gb.length ? `<div class="gb-list">${shown.map(g => { const [t, c] = GB_TUR[g.tur] || GB_TUR.diger; return `
+      <article class="gb-item ${g.okundu ? '' : 'unread'}">
+        <div class="gb-top"><span class="gb-tur ${c}">${t}</span><b class="gb-kim">${esc(g.kim)}</b><small>${esc(gbWhen(g.t))}</small></div>
+        <p class="gb-metin">${esc(g.metin)}</p>
+        ${g.bilgi ? `<details class="gb-bilgi"><summary>Cihaz bilgisi</summary><pre>${esc(g.bilgi)}</pre></details>` : ''}
+        <div class="gb-acts">
+          ${g.okundu ? '' : `<button class="btn sm" data-action="gb-read" data-id="${esc(g.id)}">${IC.check} Okundu</button>`}
+          <a class="btn sm" href="https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(g.kim)}&su=${encodeURIComponent('Mail geri bildirimin hakkında')}&body=${encodeURIComponent('\n\n> ' + g.metin.replace(/\n/g, '\n> '))}" target="_blank" rel="noopener">${IC.reply} Yanıtla</a>
+          <button class="btn sm ghost" data-action="gb-del" data-id="${esc(g.id)}">${IC.trash} Sil</button>
+        </div>
+      </article>`; }).join('')}</div>
+      ${yeni > 1 ? '<div class="ph-actions" style="margin-top:8px"><button class="btn sm" data-action="gb-read-all">Hepsini okundu say</button></div>' : ''}`
+      : '<p class="muted sm">Henüz geri bildirim yok. Kullanıcılar Mail → Ayarlar → Uygulama → Geri bildirim gönder\'den yazabilir.</p>'}
+  </section>`;
+}
+async function gbDo(body, ok) {
+  try { const j = await post(body); if (Array.isArray(j.gb)) gb = j.gb; if (ok) toast(ok); }
+  catch (e) { if (e.j?.hata === 'sifre' || e.j?.hata === 'kilit') { pw = null; return showUnlock(errText(e)); } toast(errText(e)); }
+  render();
+}
+function render() {
+  const mode = data.mode || 'off', list = mode === 'block' ? 'block' : 'allow', rows = data[list] || [];
+  const tabs = [['users', 'Kullanıcılar', IC.user], ['gb', 'Geri bildirim', IC.chat], ['set', 'Ayarlar', IC.key]];
+  const yeni = Array.isArray(gb) ? gb.filter(g => !g.okundu).length : 0;
+  const nav = `<nav class="yon-tabs">${tabs.map(([k, t, ic]) => `<button class="${yonTab === k ? 'on' : ''}" data-action="tab" data-t="${k}">${ic}<span>${t}</span>${k === 'gb' && yeni ? `<i class="gb-badge">${yeni}</i>` : ''}</button>`).join('')}</nav>`;
+  const body = yonTab === 'gb' ? gbSection() : yonTab === 'set' ? `    <section><h4>Güvenlik</h4>
       ${showPwChange ? `
       <form class="yon-form left" data-form="change">
         <input type="password" id="pwOld" placeholder="Şu anki şifre" autocomplete="current-password" required>
@@ -198,7 +335,16 @@ function render() {
         <button class="btn" data-action="lock">${IC.lock} Kilitle</button></div>
       <div class="set-row"><div><b>Liste servisi</b><span class="yon-url">${esc(DEMO ? 'Deneme modu' : SERVICE())}</span></div>
         ${LIVE() ? '' : `<button class="btn ghost" data-action="forget-url">Değiştir</button>`}</div>
-    </section>`);
+    </section>` : `
+    ${!LIVE() && !DEMO ? `<div class="card upd-card"><b>Son adım:</b> Liste servisi çalışıyor ama Mail programı adresi henüz bilmiyor; seçimlerin şu an kimseyi etkilemez. <b>config.js</b>'i indirip GitHub'a (main) yükle.<div class="ph-actions" style="margin-top:8px"><button class="btn" data-action="config">${IC.down} config.js'i indir</button></div></div>` : ''}
+    <section><h4>Kimler kullanabilir?</h4>
+      <div class="seg yon-seg">${[['off', 'Herkes'], ['allow', 'Beyaz liste'], ['block', 'Kara liste']].map(([m, t]) => `<button class="${mode === m ? 'on' : ''}" data-action="mode" data-m="${m}">${t}</button>`).join('')}</div>
+      <p class="muted sm">${mode === 'off' ? 'Programı kuran herkes kullanabilir.' : mode === 'allow' ? 'Beyaz liste: sadece beyaz listedekiler kullanabilir.' : 'Kara liste: herkes kullanabilir, kara listedekiler hariç.'} Sen her zaman kullanabilirsin. Birini listeye almak için aşağıda adına sağ tıkla ya da ⋯'ye dokun.</p>
+    </section>
+
+    ${kuSection(mode)}
+`;
+  $('#app').innerHTML = panel(nav + body);
 }
 
 /* ───── Akış ───── */
@@ -231,8 +377,12 @@ async function afterLogin() {
       : showSetup(errText(e) + ' Adresi ve 2. adımdaki ayarları kontrol et.');
   }
 }
+let gb = null;            // geri bildirimler; 'eski' = zamanlayıcı sürüm 5 değil
+async function loadGb() {
+  try { const j = await post({ islem: 'gb-liste' }); gb = Array.isArray(j.gb) ? j.gb : 'eski'; } catch { gb = gb || 'eski'; }
+}
 async function openPanel() {
-  try { data = await post({ islem: 'liste' }); touch(); render(); }
+  try { data = await post({ islem: 'liste' }); await Promise.all([loadGb(), loadKu()]); touch(); render(); }
   catch (e) { pw = null; e.j?.hata === 'yetki' ? showLogin(errText(e)) : showUnlock(errText(e)); }
 }
 
@@ -241,7 +391,9 @@ let lastAct = Date.now();
 const touch = () => { lastAct = Date.now(); };
 ['pointerdown', 'keydown'].forEach(ev => addEventListener(ev, touch, true));
 setInterval(() => { if (pw && Date.now() - lastAct > 10 * 60e3) lock(); }, 15e3);
-function lock() { pw = null; data = null; showPwChange = false; showUnlock(); }
+function lock() { pw = null; data = null; gb = null; ku = null; showPwChange = false; showUnlock(); }
+// Uygulamaya dönünce yeni geri bildirimleri getir
+document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible' && pw && data) { await Promise.all([loadGb(), loadKu()]); render(); } });
 
 let toastT;
 function toast(t) {
@@ -274,6 +426,13 @@ window.MAIL_CONFIG = {
 }
 
 const ACTIONS = {
+  'ku-menu': el => { const r = el.getBoundingClientRect(); kuMenu(el.dataset.ku, r.right - 240, r.bottom + 4); },
+  'gb-filter': el => { gbFilter = el.dataset.f; render(); },
+  'gb-refresh': async el => { el.classList.add('spin'); await Promise.all([loadGb(), loadKu()]); render(); toast('Güncellendi'); },
+  tab: el => { yonTab = el.dataset.t; store.set('yonTab', yonTab); showPwChange = false; render(); scrollTo(0, 0); },
+  'gb-read': el => gbDo({ islem: 'gb-oku', id: el.dataset.id }),
+  'gb-read-all': () => gbDo({ islem: 'gb-oku' }, 'Hepsi okundu sayıldı'),
+  'gb-del': el => { if (confirm('Bu geri bildirim silinsin mi?')) gbDo({ islem: 'gb-sil', id: el.dataset.id }, 'Silindi'); },
   login: () => Auth.login(false),
   logout: () => DEMO ? location.reload() : Auth.logout(),
   retry: () => afterLogin(),
@@ -290,7 +449,7 @@ const ACTIONS = {
   mode: el => {
     const m = el.dataset.m;
     if (m === data.mode) return;
-    if (m === 'allow' && !(data.allow || []).length && !confirm('Liste boş: "Sadece izinliler" seçilince programı senden başka kimse kullanamaz. Devam edilsin mi?')) return;
+    if (m === 'allow' && !(data.allow || []).length && !confirm('Beyaz liste şu an boş: seçilince programı senden başka kimse kullanamaz. Devam edilsin mi?')) return;
     change(() => post({ islem: 'mod', mode: m }), 'Kaydedildi');
   },
   del: el => change(() => post({ islem: 'sil', liste: el.dataset.l, h: el.dataset.h }), el.dataset.l === 'allow' ? 'Listeden çıkarıldı' : 'Engel kaldırıldı')
@@ -301,7 +460,7 @@ const FORMS = {
     if (a.length < 6) return showCreatePw('Şifre en az 6 karakter olmalı.');
     if (a !== b) return showCreatePw('İki şifre aynı değil.');
     showBusy('Kaydediliyor…');
-    try { data = await post({ islem: 'sifre-kur', yeni: a, sifre: '' }); pw = a; touch(); render(); toast('Yönetici şifresi kaydedildi'); }
+    try { data = await post({ islem: 'sifre-kur', yeni: a, sifre: '' }); pw = a; await Promise.all([loadGb(), loadKu()]); touch(); render(); toast('Yönetici şifresi kaydedildi'); }
     catch (e) { showCreatePw(errText(e)); }
   },
   unlock: async () => {
@@ -313,6 +472,13 @@ const FORMS = {
     try { data = await post({ islem: 'sifre-kur', sifre: o, yeni: n }); pw = n; showPwChange = false; toast('Şifre değiştirildi'); }
     catch (e) { if (e.j?.hata === 'kilit') { pw = null; return showUnlock(errText(e)); } toast(errText(e)); }
     render();
+  },
+  add2: async (f, e) => {
+    const email = $('#accEmail').value.trim(), note = $('#accNote').value.trim(), l = e?.submitter?.value || 'allow';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return toast('Geçerli bir e-posta adresi yaz');
+    const h = await accHash(email);
+    if (h === CFG.OWNER_HASH) return toast('Bu senin adresin; sen her zaman kullanabilirsin');
+    kuSet(h, note || email.replace(/@.*/, ''), l);
   },
   add: async f => {
     const email = $('#accEmail').value.trim(), note = $('#accNote').value.trim(), l = f.dataset.l;
@@ -328,7 +494,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('submit', e => {
   const f = e.target.closest('[data-form]');
-  if (f && FORMS[f.dataset.form]) { e.preventDefault(); FORMS[f.dataset.form](f); }
+  if (f && FORMS[f.dataset.form]) { e.preventDefault(); FORMS[f.dataset.form](f, e); }
 });
 
 boot();

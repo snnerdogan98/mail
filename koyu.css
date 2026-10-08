@@ -45,3 +45,8 @@ body { background: transparent !important; color: var(--fg); }
 .phish .btn { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.18); }
 .ph-mark { color: #ff6b6b; }
 .row.picked .row-check { color: #1b1d21; }
+.gb-tur.h { background: rgba(230,80,60,.18); color: #f3a59a; } .gb-tur.o { background: rgba(90,140,230,.18); color: #a9c4f2; }
+.gb-filters button.on { color: #1b1d21; background: #e6e9ed; border-color: #e6e9ed; }
+html.yon-html { --yon-bar: rgba(26,28,32,.86); --yon-card: rgba(255,255,255,.06); --yon-bg: #17191c; }
+@media (max-width: 700px) { body.yonetici .yon-sheet .sheet-head, body.yonetici .yon-tabs { border-color: rgba(255,255,255,.08); } }
+.ku-chip.w { background: rgba(70,180,100,.18); color: #9fdcb0; } .ku-chip.k { background: rgba(230,80,60,.18); color: #f3a59a; } .ku-chip.me { background: rgba(90,140,230,.18); color: #a9c4f2; } .ku-chip.no { background: #e6e9ed; color: #1b1d21; }

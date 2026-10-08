@@ -36,8 +36,8 @@ function openSettings() {
           </div>
         </section>
         ${typeof notifySection === 'function' ? notifySection() : ''}
-        ${typeof undoSendRow === 'function' ? `<section><h4>Gönderme</h4>${undoSendRow()}</section>` : ''}
-        ${typeof keysRow === 'function' ? `<section><h4>Klavye</h4>${keysRow()}</section>` : ''}
+        ${typeof undoSendRow === 'function' ? `<section><h4>Gönderme</h4>${undoSendRow()}${typeof contactsRow === 'function' ? contactsRow() : ''}</section>` : ''}
+        ${typeof keysRow === 'function' ? `<section><h4>Klavye ve fare</h4>${keysRow()}${typeof ctxRow === 'function' ? ctxRow() : ''}</section>` : ''}
         ${typeof signatureSection === 'function' ? signatureSection() : ''}
         <section>
           <h4>Gizlilik</h4>
@@ -84,7 +84,8 @@ function openSettings() {
         </section>
         <section>
           <h4>Uygulama</h4>
-          <div class="set-row"><div><b>Sürüm ${APP_VERSION}</b><span>Mail · kişisel Gmail istemcisi</span></div></div>
+          ${typeof aboutRow === 'function' ? aboutRow() : `<div class="set-row"><div><b>Sürüm ${APP_VERSION}</b></div></div>`}
+          ${typeof feedbackRow === 'function' ? feedbackRow() : ''}
           <div class="set-row"><div><b>Yenile ve güncelle</b><span>Eski sürüm görünüyorsa önbelleği temizler; giriş ve ayarların kalır</span></div>
             <button class="btn" data-action="set-hard-reload">${IC.refresh}Yenile</button></div>
         </section>
